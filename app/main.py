@@ -78,10 +78,10 @@ def draw_tracking_viz(preview: np.ndarray, obs: Observation | None, smoothed: di
     h, w = preview.shape[:2]
     if obs is not None and obs.landmarks is not None:
         # preview is mirrored, so mirror x too
-        pts = ((1 - obs.landmarks[:, 0]) * w).astype(int), (obs.landmarks[:, 1] * h).astype(int)
-        for x, y in zip(*pts):
-            if 0 <= x < w and 0 <= y < h:
-                preview[y, x] = (80, 255, 120)
+        xs = ((1 - obs.landmarks[:, 0]) * w).astype(int)
+        ys = (obs.landmarks[:, 1] * h).astype(int)
+        m = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
+        preview[ys[m], xs[m]] = (80, 255, 120)
     y0 = h - 14 * len(VIZ_BARS) - 8
     for i, (label, key) in enumerate(VIZ_BARS):
         y = y0 + 14 * i
@@ -120,11 +120,10 @@ def main() -> int:
     hyst = {side: TriStateEye(cfg["eyes"]) for side in ("left", "right")}  # keyed by USER side
     calib = Calibration(cfg["calibration"]["frames"])
 
-    last_seen = time.monotonic()
     smoothed: dict[str, float] = {k: 0.0 for k in SMOOTH_KEYS}
     head = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
-    t_prev, fps = time.monotonic(), 0.0
-    t0 = time.monotonic()
+    fps = 0.0
+    t0 = t_prev = last_seen = time.monotonic()
 
     try:
         while True:

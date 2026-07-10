@@ -3,20 +3,12 @@
 #   probe_camera.sh          -> list /dev/video* with their names
 #   probe_camera.sh /dev/videoN -> grab ONE frame via docker, print ret/shape/mean
 set -euo pipefail
-
-IMG="drawface/flp:v3-x11"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+IMG="$RUNIMG"
 
 if [ $# -eq 0 ]; then
   echo "== video nodes =="
-  if ls /dev/video* >/dev/null 2>&1; then
-    for dev in /dev/video*; do
-      n="$(basename "$dev")"
-      name="$(cat "/sys/class/video4linux/$n/name" 2>/dev/null || echo '?')"
-      echo "  $dev -> $name"
-    done
-  else
-    echo "  /dev/video*: MISSING"
-  fi
+  list_video_nodes
   echo
   echo "usage: $(basename "$0") /dev/videoN   # probe one node (one frame, saved nowhere)"
   exit 0

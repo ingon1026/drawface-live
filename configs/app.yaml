@@ -31,8 +31,7 @@ mouth:
   jaw_closed: 0.06       # jawOpen below -> closed (or smile)
   pucker_threshold: 0.40 # mouthPucker above -> U (O if jaw open)
   funnel_threshold: 0.35 # mouthFunnel above -> O
-  smile_threshold: 0.30  # mouthSmile avg above (with closed jaw) -> smile mouth
-  smile_sprite: smile    # derived from mouth_closed by scripts/derive_sprites.py (falls back to closed if absent)
+  smile_threshold: 0.30  # mouthSmile avg above (with closed jaw) -> smile mouth (mouth_smile.png, derived)
 
 head:
   yaw_gain_px: -1.6   # px of x-shift per degree of yaw (sign flips direction)

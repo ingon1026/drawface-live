@@ -2,9 +2,8 @@
 # Idempotent setup: submodule, docker image, checkpoints. Each step skips if done.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"   # ROOT, RUNIMG
 IMG="shaoguo/faster_liveportrait:v3"
-RUNIMG="drawface/flp:v3-x11"
 SM="$ROOT/third_party/FasterLivePortrait"
 CKPT="$ROOT/checkpoints"
 VENV="$ROOT/.venv"

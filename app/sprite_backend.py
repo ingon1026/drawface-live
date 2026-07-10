@@ -20,12 +20,9 @@ EXPECTED = [
     "mouth_closed.png", "mouth_A.png", "mouth_E.png", "mouth_I.png",
     "mouth_O.png", "mouth_U.png",
 ]
-# Derivable via scripts/derive_sprites.py; brow sprites remain unavailable for the pig set.
-OPTIONAL = ["eye_L_half.png", "eye_R_half.png", "mouth_M.png", "mouth_smile.png"]
-
 MOUTH_KEYS = ("closed", "A", "E", "I", "O", "U")
-OPTIONAL_MOUTHS = ("smile", "M")
-EYE_STATES = ("open", "half", "closed")
+# Derivable via scripts/derive_sprites.py; absent optional sprites degrade at load.
+OPTIONAL_MOUTHS = ("smile",)
 
 
 def eye_key_for_user_side(user_side: str, mirror: bool) -> str:
@@ -90,7 +87,7 @@ def pick_mouth(blend: dict[str, float], mouth_cfg: dict) -> str:
 
     if jaw < mouth_cfg["jaw_closed"]:
         if smile >= mouth_cfg["smile_threshold"]:
-            return mouth_cfg.get("smile_sprite", "E")
+            return "smile"  # resolves to the closed overlay at load if the sprite is absent
         return "closed"
     if pucker >= mouth_cfg["pucker_threshold"]:
         return "O" if jaw >= mouth_cfg["jaw_mid"] else "U"
@@ -111,28 +108,29 @@ class SpriteCharacter:
             raise FileNotFoundError(
                 f"missing sprites in {d}: {missing} — place them there; artwork is never auto-generated"
             )
-        absent_optional = [f for f in OPTIONAL if not (d / f).exists()]
-        if absent_optional:
-            log.info("optional sprites not present (feature degrades gracefully): %s", absent_optional)
-
         base_rgba = self._load(d / "base.png")
         # Flatten base onto white paper once; overlays stay RGBA.
         alpha = base_rgba[:, :, 3:4].astype(np.float32) / 255.0
         self.base = (base_rgba[:, :, :3].astype(np.float32) * alpha + 255.0 * (1 - alpha)).astype(np.float32)
         self.h, self.w = self.base.shape[:2]
 
+        # Optional sprites resolve to a fallback ONCE at load (absence is reported
+        # here; artwork is never fabricated) so compose() stays branch-light.
         self.eyes = {}
         for side in ("L", "R"):
             states = {state: self._overlay(d / f"eye_{side}_{state}.png") for state in ("open", "closed")}
-            half_path = d / f"eye_{side}_half.png"
-            # missing half state degrades to open (never fabricate artwork)
-            states["half"] = self._overlay(half_path) if half_path.exists() else states["open"]
+            states["half"] = self._optional(d / f"eye_{side}_half.png", states["open"])
             self.eyes[side] = states
         self.mouths = {k: self._overlay(d / f"mouth_{k}.png") for k in MOUTH_KEYS}
         for k in OPTIONAL_MOUTHS:
-            p = d / f"mouth_{k}.png"
-            if p.exists():
-                self.mouths[k] = self._overlay(p)
+            self.mouths[k] = self._optional(d / f"mouth_{k}.png", self.mouths["closed"])
+        self._cache: dict[tuple[str, str, str], np.ndarray] = {}
+
+    def _optional(self, path: Path, fallback: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+        if path.exists():
+            return self._overlay(path)
+        log.info("optional sprite not present, degrading gracefully: %s", path.name)
+        return fallback
 
     def _load(self, path: Path) -> np.ndarray:
         img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
@@ -143,19 +141,26 @@ class SpriteCharacter:
         return img
 
     def _overlay(self, path: Path) -> tuple[np.ndarray, np.ndarray]:
-        """Precompute (premultiplied rgb, alpha) float32 for fast alpha-over."""
+        """Precompute (premultiplied rgb, 1-alpha) float32 for fast alpha-over."""
         img = self._load(path)
         a = img[:, :, 3:4].astype(np.float32) / 255.0
-        return img[:, :, :3].astype(np.float32) * a, a
+        return img[:, :, :3].astype(np.float32) * a, 1.0 - a
 
     def compose(self, eye_l: str, eye_r: str, mouth: str) -> np.ndarray:
-        """eye_l/eye_r: one of EYE_STATES; mouth: a key present in self.mouths."""
-        if mouth not in self.mouths:
-            mouth = "closed"
-        out = self.base.copy()
-        for premul, a in (self.eyes["L"][eye_l], self.eyes["R"][eye_r], self.mouths[mouth]):
-            out = premul + out * (1 - a)
-        return out.astype(np.uint8)  # BGR
+        """eye_l/eye_r: 'open'|'half'|'closed'; mouth: a key present in self.mouths.
+
+        Results are memoized per state tuple (≤72 combinations); callers must not
+        mutate the returned array.
+        """
+        key = (eye_l, eye_r, mouth)
+        cached = self._cache.get(key)
+        if cached is None:
+            out = self.base.copy()
+            for premul, inv_a in (self.eyes["L"][eye_l], self.eyes["R"][eye_r], self.mouths[mouth]):
+                out *= inv_a
+                out += premul
+            cached = self._cache[key] = out.astype(np.uint8)  # BGR
+        return cached
 
 
 def apply_head_transform(img: np.ndarray, yaw: float, pitch: float, roll: float, head_cfg: dict) -> np.ndarray:

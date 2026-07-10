@@ -4,10 +4,12 @@ No new artwork is generated (CLAUDE.md rule) — half-eye is a vertical squash o
 the open eye, smile is a corner-lift remap of the closed mouth. Both are
 mechanical warps of the user's own drawing.
 
-Usage: .venv/bin/python scripts/derive_sprites.py assets/sprites/pig
+Usage: PYTHONPATH= .venv/bin/python scripts/derive_sprites.py assets/sprites/pig
+       (PYTHONPATH= guards against unrelated site packages, e.g. a sourced ROS env)
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -86,8 +88,6 @@ def make_procedural_closed(manifest_path: Path, out_path: Path) -> None:
     Only for characters whose manifest declares `proceduralMouth: true` — the
     user's own asset system defines those mouths as procedural (no hand art).
     """
-    import json
-
     mf = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not mf.get("proceduralMouth"):
         raise ValueError(f"{manifest_path}: proceduralMouth is false — supply mouth_closed.png artwork instead")
@@ -103,8 +103,6 @@ def make_procedural_closed(manifest_path: Path, out_path: Path) -> None:
 
 
 def derive_mouth_set(closed_path: Path, manifest_path: Path, out_dir: Path) -> None:
-    import json
-
     style = json.loads(manifest_path.read_text(encoding="utf-8")).get("mouthStyle", {})
     fill = tuple(int(v * 0.72) for v in _hex_bgr(style.get("fill", "#8a3535")))  # darker interior reads as depth
     tongue_c = _hex_bgr(style.get("tongue", "#d97b7b"))

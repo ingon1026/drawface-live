@@ -8,7 +8,7 @@ from app.sprite_backend import Hysteresis, TriStateEye, eye_key_for_user_side, p
 MOUTH_CFG = {
     "jaw_closed": 0.06, "jaw_mid": 0.16, "jaw_large": 0.32,
     "pucker_threshold": 0.40, "funnel_threshold": 0.35,
-    "smile_threshold": 0.30, "smile_sprite": "smile",
+    "smile_threshold": 0.30,
 }
 EYES_CFG = {
     "close_threshold": 0.45, "open_threshold": 0.30,

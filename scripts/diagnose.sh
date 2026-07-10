@@ -2,9 +2,8 @@
 # Read-only environment report for DrawFace Live. Never captures or saves frames.
 # Tolerant by design: prints MISSING instead of aborting on any absent tool.
 set -u
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMG="drawface/flp:v3-x11"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+IMG="$RUNIMG"
 
 hr() { printf '%s\n' "----------------------------------------"; }
 
@@ -28,7 +27,7 @@ hr
 echo "[Docker]"
 if command -v docker >/dev/null 2>&1; then
   docker --version 2>&1 || echo "  docker --version FAILED"
-  if docker image ls "$IMG" 2>/dev/null | grep -q faster_liveportrait; then
+  if docker image inspect "$IMG" >/dev/null 2>&1; then
     docker image ls "$IMG" --format '  image: {{.Repository}}:{{.Tag}} ({{.Size}})' 2>/dev/null
   else
     echo "  image $IMG: MISSING"
@@ -39,15 +38,7 @@ fi
 hr
 
 echo "[Video nodes]"
-if ls /dev/video* >/dev/null 2>&1; then
-  for dev in /dev/video*; do
-    n="$(basename "$dev")"
-    name="$(cat "/sys/class/video4linux/$n/name" 2>/dev/null || echo '?')"
-    echo "  $dev -> $name"
-  done
-else
-  echo "  /dev/video*: MISSING"
-fi
+list_video_nodes
 hr
 
 echo "[Assets]"

@@ -1,0 +1,67 @@
+{
+  "date": "2026-07-10",
+  "phase": "Phase 1 baseline (FasterLivePortrait upstream, unmodified)",
+  "environment": {
+    "os": "WSL2 Ubuntu 24.04.4 (Windows 11 host), kernel 6.6.123.2-microsoft-standard-WSL2+ (custom, uvcvideo)",
+    "cpu": "Intel Core i7-14700K (28 threads)",
+    "ram_gb": 47,
+    "gpu": "NVIDIA RTX 4070 Ti 12GB (sm_89), driver 591.86",
+    "backend": "ONNX Runtime GPU 1.17.0 (custom build in image), CUDAExecutionProvider",
+    "tensorrt": "TRT 8.6.1 present in image but python bindings unusable without LD_LIBRARY_PATH fix; engine conversion not attempted this session",
+    "runtime": "Docker Desktop 29.6.1, image shaoguo/faster_liveportrait:v3 (digest sha256:c2fb2b22c61594ca3c187cfcae514cd449135a1aee693b79f924998d394b378d) + derived drawface/flp:v3-x11 (X11 libs, colorama, LD_LIBRARY_PATH)",
+    "upstream_commit": "8aad3602177547aaa5e4beec0c3ef5b7944e7a1f",
+    "camera": "Intel RealSense 455 RGB via usbipd-win -> /dev/video4 (YUYV 640x480@30fps), mapped to /dev/video0 in container",
+    "source_image": "assets/source/character.png (512x512 RGB, hand-drawn pig, flattened from RGBA)"
+  },
+  "human_mode": {
+    "config": "configs/onnx_infer.yaml (insightface retinaface) and configs/onnx_mp_infer.yaml (MediaPipe)",
+    "source_face_detected": false,
+    "detail": "\"No face detected in the this image\" -> \"no face ... exit!\" with BOTH detectors. Model loading on CUDA succeeded; failure is source detection only.",
+    "driving_face_detected": null,
+    "animation": "not reachable",
+    "fps": null,
+    "verdict": "FAIL - cannot animate this hand-drawn source"
+  },
+  "animal_mode": {
+    "config": "configs/onnx_infer.yaml --animal (XPose keypoints, prebuilt MultiScaleDeformableAttention op)",
+    "source_face_detected": true,
+    "driving_face_detected": true,
+    "runs": [
+      {
+        "name": "paste_back on",
+        "inference_median_ms": 124.2,
+        "inference_mean_ms": 145.8,
+        "fps_from_median": 8.1,
+        "vram_mib_baseline": 8531,
+        "vram_mib_peak": 11543
+      },
+      {
+        "name": "side-by-side (paste_back off)",
+        "inference_median_ms": 118.4,
+        "inference_mean_ms": 215.1,
+        "fps_from_median": 8.4,
+        "vram_mib_baseline": 3720,
+        "vram_mib_peak": 11597,
+        "note": "VRAM is shared with Windows apps on WSL2; per-process attribution unavailable, deltas are upper bounds"
+      }
+    ],
+    "latency_estimate_ms": "~150-165 end-to-end (camera ~33ms @30fps + inference ~120ms + display); not instrumented, estimate only",
+    "expression_response": {
+      "wink_left_right_independent": "not evaluable - face region too distorted",
+      "blink_stability": "not evaluable - face region too distorted",
+      "mouth_open": "motion visibly transfers but shape collapses",
+      "smile": "not evaluable",
+      "head_pose": "transfers, but drags/smears the whole head region"
+    },
+    "identity_preservation": "POOR - entire head smeared/deformed (see user's screenshot); hand-drawn line art is out-of-distribution for the photo-trained warping model",
+    "body_background_preservation": "GOOD with --paste_back (body, shorts, paper background intact)",
+    "artifacts": "severe warping/smearing of head+ears, ghosting streaks above head",
+    "verdict": "Detects and animates, but output quality unusable for this source (user-confirmed on live webcam)"
+  },
+  "decision": {
+    "rule": "CLAUDE.md Phase 3: fallback only if both modes fail to detect or drawing collapses badly",
+    "outcome": "Condition met (human: no source detection; animal: severe collapse). User approved Phase 5 MediaPipe sprite fallback on 2026-07-10.",
+    "next": "Phase 5: MediaPipe Face Landmarker -> blendshapes -> sprite compositing over the original drawing (100% style preservation)"
+  },
+  "privacy": "No webcam frames saved. Upstream-written driving-motion pkl (results/) deleted after each run."
+}

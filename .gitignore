@@ -1,0 +1,22 @@
+# Model weights / engines
+checkpoints/
+*.engine
+
+# Outputs (keep the directory placeholder)
+outputs/*
+!outputs/.gitkeep
+!outputs/benchmark.json
+!outputs/benchmark.md
+results/
+
+# Private source images
+assets/source/*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Logs / WSL cruft
+*.log
+*Zone.Identifier

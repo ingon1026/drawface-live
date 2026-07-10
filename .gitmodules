@@ -1,0 +1,4 @@
+[submodule "third_party/FasterLivePortrait"]
+	path = third_party/FasterLivePortrait
+	url = https://github.com/warmshao/FasterLivePortrait
+	ignore = untracked

@@ -60,15 +60,36 @@ degrade gracefully where art is absent.
 
 Additional gaps and extras:
 
-- **No half-blink states.** Eyes are binary open/closed only; the fallback
-  cannot render a distinct half-open eye for this character.
+- **Half-blink states** (`eye_*_half`) and **smile** (`mouth_smile`) are now
+  **derived mechanically** from the existing artwork by `scripts/derive_sprites.py`
+  (vertical squash of the open eye / corner-lift of the closed mouth).
+  `scripts/setup.sh` runs this automatically; no new artwork is drawn.
 - **No brow sprites** (and none expected in §6's list). Brow blendshapes have no
   target artwork here (`browRange: 0`).
 - **Extra:** `mouth_M` (bilabial viseme) beyond the spec's `A/E/I/O/U` set.
 - **Extra:** `base.png`, `preview.png`, `preview_blink.png` — base layer and
   reference previews, not part of the spec's per-feature list.
 
+## Adding a NEW character (auto viseme path)
+
+A new character needs only **4 hand-made inputs** in `assets/sprites/<name>/`:
+`base.png` (512×512), `eye_L_open/closed.png`, `eye_R_open/closed.png`,
+`mouth_closed.png`, plus a `manifest.json` with `mouthStyle` colors.
+Then derive everything else:
+
+```bash
+PYTHONPATH= .venv/bin/python scripts/derive_sprites.py assets/sprites/<name>                     # half-eye + smile
+PYTHONPATH= .venv/bin/python scripts/derive_sprites.py assets/sprites/<name> --auto-mouths assets/sprites/<name>  # A/E/I/O/U
+```
+
+The auto visemes reuse the character's own closed-mouth stroke as lips (ink
+color/thickness sampled from it) and fill the interior with `mouthStyle` colors.
+Hand-made viseme art (e.g. the pig's GPT-assisted set) always takes priority —
+`--auto-mouths` refuses to overwrite an existing set without `--force`.
+
 ## Policy
 
-If any sprite is missing, the fallback must **report it** by name. Missing
-sprites are **never** auto-generated — the user supplies the artwork.
+If any required sprite is missing, the fallback must **report it** by name.
+Missing artwork is **never invented** — derivations above are geometric
+transforms of the user's own drawing, and the user can always override them
+with hand-made files of the same name.

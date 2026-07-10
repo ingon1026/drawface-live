@@ -62,6 +62,25 @@ Meta Animated Drawings의 "얼굴 애니메이션" 대응판.
 bash scripts/diagnose.sh
 ```
 
+## Phase 5 — 스프라이트 폴백 (현재 동작 확인된 파이프라인)
+
+MediaPipe Face Landmarker(랜드마크 478점 + blendshape 52채널)로 표정을 추적해
+원본 그림 위에 눈/입 스프라이트를 합성한다. **화풍 100% 보존.** 라이브 웹캠으로 검증 완료:
+윙크 좌/우 독립, 깜빡임(히스테리시스), 입 벌림 단계(I/E/A)·오므림(U/O)·미소, 고개 2.5D 모션.
+
+```bash
+bash scripts/setup.sh                     # .venv + face_landmarker.task + 스프라이트 (idempotent)
+PYTHONPATH= .venv/bin/python -m app.main  # configs/app.yaml 기반 실행
+```
+
+- 시작 시 30프레임 **중립 캘리브레이션** — 정면·무표정 유지
+- 창: `[웹캠 프리뷰(미러)+추적 시각화 | 캐릭터]` — 프리뷰에 랜드마크 점·신호 바 표시
+- 키: `q`/ESC 종료 · `c` 재캘리브레이션 · `m` 미러 좌우 전환
+- 모든 임계값은 `configs/app.yaml`에서 조정 (블링크 open/close 이중 임계, EMA, 머리 gain, lost-face 타임아웃)
+- 테스트: `PYTHONPATH= .venv/bin/python -m pytest tests/` (좌우 시맨틱 매핑·히스테리시스·비즈메 선택 검증)
+
+스프라이트 규약과 누락 목록: `assets/sprites/README.md`
+
 ## 소스 이미지
 
 `assets/source/character.png`는 커밋되지 않는다(개인 이미지). 원하는 512×512 그림을

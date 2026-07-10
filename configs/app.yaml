@@ -1,0 +1,47 @@
+# DrawFace Live — Phase 5 sprite fallback configuration.
+# All thresholds live here (CLAUDE.md §7), not in code.
+
+camera:
+  index: 4          # RealSense 455 RGB node (see scripts/probe_camera.sh)
+  width: 640
+  height: 480
+
+character:
+  dir: assets/sprites/pig
+
+tracker:
+  model: checkpoints/mediapipe/face_landmarker.task
+
+control:
+  mirror: true      # true: user's LEFT eye drives the sprite on the VIEWER-LEFT (mirror-like)
+
+smoothing:
+  blend_alpha: 0.45 # EMA for blendshape values (higher = snappier)
+  head_alpha: 0.30  # EMA for head pose
+
+eyes:
+  close_threshold: 0.45  # calibrated blink score >= this -> eye closes
+  open_threshold: 0.30   # calibrated blink score <= this -> eye opens (hysteresis gap prevents flicker)
+
+mouth:
+  jaw_mid: 0.16          # jawOpen below -> I, above -> E
+  jaw_large: 0.32        # jawOpen above -> A
+  jaw_closed: 0.06       # jawOpen below -> closed (or smile)
+  pucker_threshold: 0.40 # mouthPucker above -> U (O if jaw open)
+  funnel_threshold: 0.35 # mouthFunnel above -> O
+  smile_threshold: 0.30  # mouthSmile avg above (with closed jaw) -> smile mouth
+  smile_sprite: E        # pig set has no dedicated smile sprite; E is the widest closed-ish mouth
+
+head:
+  yaw_gain_px: -1.6   # px of x-shift per degree of yaw (sign flips direction)
+  pitch_gain_px: 1.2  # px of y-shift per degree of pitch
+  roll_gain: 1.0      # multiplier on roll degrees for canvas rotation
+  max_shift_px: 48
+  max_roll_deg: 20
+
+lost_face:
+  hold_ms: 300    # keep last expression this long after face is lost
+  decay_ms: 600   # then ease back to neutral over this long
+
+calibration:
+  frames: 30      # neutral-pose frames captured at startup / on 'c' key

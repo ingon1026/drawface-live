@@ -9,8 +9,9 @@ outputs/*
 !outputs/benchmark.md
 results/
 
-# Private source images
+# Private source images (sprites are derived from the user's drawing; setup.sh copies them locally)
 assets/source/*
+assets/sprites/pig/
 
 # Python
 __pycache__/

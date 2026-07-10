@@ -1,96 +1,108 @@
 # DrawFace Live
 
-## 목표
+한 장의 손그림 캐릭터가 웹캠 표정을 실시간으로 따라 합니다. 원본 그림의 획은 그대로 두고
+눈·입 스프라이트만 교체 합성하므로 **화풍이 변형 없이 유지**됩니다.
 
-사용자의 실시간 웹캠 얼굴 움직임(좌/우 윙크, 깜빡임, 입 벌림, 미소, 머리 움직임)을
-손그림 캐릭터 한 장에 전이하는 WSL2 데스크톱 프로토타입.
-Meta Animated Drawings의 "얼굴 애니메이션" 대응판.
+![표정 상태](docs/img/pig_states.png)
 
-## Phase 1 결과 (2026-07-10, 라이브 웹캠 실측)
+```mermaid
+flowchart LR
+    A[Webcam] --> B["MediaPipe Face Landmarker<br/>랜드마크 478점 · blendshape 52채널"]
+    B --> C["중립 캘리브레이션<br/>EMA 스무딩 · 히스테리시스"]
+    C --> D["눈 3단계 · 입 비즈메 선택<br/>2.5D 머리 변환"]
+    D --> E["스프라이트 알파 합성<br/>원본 그림 위 출력"]
+```
 
-[warmshao/FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait)
-(commit `8aad360`, Docker, ONNX GPU)를 무수정으로 검증한 결과:
+## 빠른 시작
 
-- **Human 모드**: 손그림(돼지)에서 소스 얼굴 검출 실패 (insightface·MediaPipe 모두) → 구동 불가
-- **Animal 모드**: XPose가 검출 성공, 실시간 구동됨(~8.1–8.4 FPS, VRAM 피크 ~11.5GiB).
-  그러나 **머리 영역이 심하게 뭉개져 사용 불가** — 실사 학습 워핑 모델에 선화는 분포 밖 입력
-- 몸통/배경 보존(paste_back)은 정상 동작
+요구 사항: Linux/WSL2(WSLg), Python 3.12, [uv](https://docs.astral.sh/uv/), 웹캠.
 
-상세 수치: [`outputs/benchmark.md`](outputs/benchmark.md) / [`outputs/benchmark.json`](outputs/benchmark.json)
+```bash
+bash scripts/setup.sh                     # venv + 추적 모델 + 스프라이트 (idempotent)
+PYTHONPATH= .venv/bin/python -m app.main  # 실행
+```
 
-**판정**: CLAUDE.md Phase 3 규칙 충족 → **Phase 5 MediaPipe 스프라이트 폴백**으로 전환
-(웹캠 표정 추적 + 원본 그림 위 스프라이트 합성, 화풍 100% 보존). 구현 진행 중.
+시작 후 30프레임 동안 정면·무표정을 유지하면 중립 기준이 자동 보정됩니다.
+창 왼쪽은 웹캠 프리뷰(미러, 랜드마크·신호 바 오버레이), 오른쪽은 캐릭터 출력입니다.
 
-## 검증된 환경
-
-| 항목 | 값 |
+| 키 | 동작 |
 | --- | --- |
-| OS | WSL2 Ubuntu 24.04 (WSLg) |
-| GPU | NVIDIA RTX 4070 Ti 12GB, 드라이버 591.86 |
-| 런타임 | Docker Desktop + 파생 이미지 `drawface/flp:v3-x11` (`docker/Dockerfile`) |
-| 웹캠 | Intel RealSense 455, usbipd attach → RGB는 `/dev/video4` (YUYV 640×480@30) |
-| 엔진 커밋 | upstream `8aad3602177547aaa5e4beec0c3ef5b7944e7a1f` (`THIRD_PARTY.md`) |
+| `q` / `ESC` | 종료 |
+| `c` | 중립 재캘리브레이션 |
+| `m` | 윙크 좌우 매핑 전환 (미러 ↔ 해부학적) |
 
-> **의도된 스펙 이탈:** 실행 스크립트는 `.ps1`이 아니라 `.sh`다.
-> 실제 런타임 환경이 Windows PowerShell이 아니라 WSL2 + Docker이기 때문이다.
-
-## 설정 순서 (전부 실측 검증됨)
-
-1. **웹캠 attach** (Windows측, usbipd-win 필요):
-   ```powershell
-   usbipd attach --wsl --busid 2-1
-   ```
-2. **엔진/체크포인트 설정** (WSL) — 서브모듈, 이미지 pull+파생 빌드, 체크포인트 3.1GB:
-   ```bash
-   bash scripts/setup.sh
-   ```
-3. **RGB 노드 확인** — RealSense는 `/dev/video0-5`를 노출하며 이름만으로 구분 불가:
-   ```bash
-   bash scripts/probe_camera.sh              # 노드 목록
-   bash scripts/probe_camera.sh /dev/video4  # 한 프레임만 확인 (저장 안 함)
-   ```
-4. **실시간 구동** — 확인된 RGB 노드를 인자로:
-   ```bash
-   bash scripts/run_human.sh  /dev/video4   # human 모드 (이 소스에선 검출 실패로 종료)
-   bash scripts/run_animal.sh /dev/video4   # animal 모드 (+paste_back)
-   ```
-   창이 뜨는 **첫 프레임이 모션 기준(중립)**이므로 시작 시 정면·무표정 유지.
-   `q` 종료. paste_back 없이 실행하면 `[드라이빙|출력]` 나란히 보기.
-
-환경 점검은 언제든:
-```bash
-bash scripts/diagnose.sh
-```
-
-## Phase 5 — 스프라이트 폴백 (현재 동작 확인된 파이프라인)
-
-MediaPipe Face Landmarker(랜드마크 478점 + blendshape 52채널)로 표정을 추적해
-원본 그림 위에 눈/입 스프라이트를 합성한다. **화풍 100% 보존.** 라이브 웹캠으로 검증 완료:
-윙크 좌/우 독립, 깜빡임·반감김(open/half/closed 3단계 히스테리시스), 입 벌림 단계(I/E/A)·오므림(U/O)·미소(입꼬리 올림), 고개 2.5D 모션.
-half-eye·smile 스프라이트는 기존 그림의 기하 변형으로 파생(`scripts/derive_sprites.py`, setup.sh가 자동 실행) — 새 그림 생성 없음.
-**새 캐릭터 추가**는 base+눈4장+다문입 1장+manifest만 있으면 A/E/I/O/U를 자동 파생(`--auto-mouths`) —
-GPT 등으로 만든 수제 비즈메가 있으면 그쪽이 우선(덮어쓰기 가드). 절차: `assets/sprites/README.md` 참고.
+다른 캐릭터 실행:
 
 ```bash
-bash scripts/setup.sh                     # .venv + face_landmarker.task + 스프라이트 (idempotent)
-PYTHONPATH= .venv/bin/python -m app.main  # configs/app.yaml 기반 실행
+PYTHONPATH= .venv/bin/python -m app.main --character assets/sprites/stick
 ```
 
-- 시작 시 30프레임 **중립 캘리브레이션** — 정면·무표정 유지
-- 창: `[웹캠 프리뷰(미러)+추적 시각화 | 캐릭터]` — 프리뷰에 랜드마크 점·신호 바 표시
-- 키: `q`/ESC 종료 · `c` 재캘리브레이션 · `m` 미러 좌우 전환
-- 모든 임계값은 `configs/app.yaml`에서 조정 (블링크 open/close 이중 임계, EMA, 머리 gain, lost-face 타임아웃)
-- 테스트: `PYTHONPATH= .venv/bin/python -m pytest tests/` (좌우 시맨틱 매핑·히스테리시스·비즈메 선택 검증)
+## 표정 매핑
 
-스프라이트 규약과 누락 목록: `assets/sprites/README.md`
+| 입력 (blendshape) | 출력 |
+| --- | --- |
+| `eyeBlinkLeft` / `eyeBlinkRight` | 눈 open / half / closed — 좌우 독립, 이중 임계 히스테리시스로 떨림 방지 |
+| `jawOpen` 크기 | 입 I → E → A 단계 전환 |
+| `mouthPucker` / `mouthFunnel` | U / O |
+| `mouthSmile` (입 다문 상태) | smile |
+| 얼굴 변환 행렬 (yaw/pitch/roll) | 캔버스 2.5D 이동·회전 |
+| 얼굴 소실 | 마지막 표정 유지 후 중립으로 감쇠 복귀 |
 
-## 소스 이미지
+모든 임계값·게인은 [`configs/app.yaml`](configs/app.yaml)에서 조정합니다.
 
-`assets/source/character.png`는 커밋되지 않는다(개인 이미지). 원하는 512×512 그림을
-그 경로에 놓으면 된다 (RGBA면 흰 배경으로 flatten 권장).
+## 새 캐릭터 추가
+
+`assets/sprites/<이름>/`에 아래 파일만 두면 나머지 표정 스프라이트는 자동 파생됩니다.
+
+```text
+base.png                          # 캐릭터 원본 (512×512, 눈 자리 비움)
+eye_L_open.png  eye_L_closed.png  # 눈 4장 (전체 캔버스 RGBA 오버레이)
+eye_R_open.png  eye_R_closed.png
+mouth_closed.png                  # 다문 입 1장 — manifest가 proceduralMouth: true면 생략 가능
+manifest.json                     # mouthCenter, mouthStyle 색상
+```
+
+```bash
+PYTHONPATH= .venv/bin/python scripts/derive_sprites.py assets/sprites/<이름>                                        # half-eye · smile
+PYTHONPATH= .venv/bin/python scripts/derive_sprites.py assets/sprites/<이름> --auto-mouths assets/sprites/<이름>    # A/E/I/O/U
+```
+
+자동 비즈메는 캐릭터의 다문 입 획을 입술로 재사용하고(잉크 색·선 두께를 실제 획에서 샘플링)
+내부만 manifest 색으로 채웁니다. 수제 비즈메 파일이 있으면 항상 그쪽이 우선하며,
+`--auto-mouths`는 기존 세트를 `--force` 없이 덮어쓰지 않습니다.
+
+수제(위) vs 자동 파생(아래):
+
+![비즈메 비교](docs/img/auto_visemes.png)
+
+입 그림이 전혀 없는 캐릭터도 `proceduralMouth: true` 선언만으로 전체 세트가 생성됩니다:
+
+![stick 자동 파생](docs/img/stick_auto.png)
+
+상세 규약: [`assets/sprites/README.md`](assets/sprites/README.md)
+
+## 테스트
+
+```bash
+PYTHONPATH= .venv/bin/python -m pytest tests/
+```
+
+윙크 좌우 시맨틱 매핑(미러 모드에서도 의미가 뒤집히지 않음), 히스테리시스 상태 전이,
+비즈메 선택 사다리, 설정 검증을 포함합니다.
+
+## 신경망 엔진 평가
+
+스프라이트 방식 채택 전에 [FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait)
+(commit `8aad360`, Docker ONNX GPU, RTX 4070 Ti)를 라이브 웹캠으로 평가했습니다.
+human 모드는 손그림에서 소스 얼굴을 검출하지 못했고, animal 모드(XPose)는 구동되지만
+실사 학습 워핑 모델 특성상 선화의 머리 영역이 심하게 변형됩니다(~8.4 FPS).
+측정 수치와 재현 절차: [`outputs/benchmark.md`](outputs/benchmark.md)
+
+```bash
+bash scripts/run_animal.sh /dev/video4    # 신경망 경로 재현 (요 Docker + usbipd 웹캠)
+```
 
 ## 프라이버시
 
-웹캠 프레임은 로컬에서만 처리하며 **어떤 스크립트도 프레임을 저장하지 않는다.**
-외부 전송·분석·텔레메트리 없음. 카메라 프로브도 한 프레임을 읽어 통계만 출력한다.
-업스트림 run.py가 종료 시 남기는 드라이빙 모션 pkl(`results/`)은 실행 후 삭제한다.
+웹캠 프레임은 로컬에서만 처리되며 어떤 경로로도 저장·전송되지 않습니다.
+텔레메트리 없음. 추적 모델(face_landmarker.task)은 MediaPipe 공식 저장소에서 받습니다.

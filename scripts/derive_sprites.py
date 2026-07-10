@@ -80,6 +80,28 @@ def _place(canvas: np.ndarray, content: np.ndarray, cx: float, top: int) -> None
     region[:] = (src.astype(np.float32) * a + region.astype(np.float32) * (1 - a)).astype(np.uint8)
 
 
+def make_procedural_closed(manifest_path: Path, out_path: Path) -> None:
+    """Draw a closed-mouth stroke from manifest params.
+
+    Only for characters whose manifest declares `proceduralMouth: true` — the
+    user's own asset system defines those mouths as procedural (no hand art).
+    """
+    import json
+
+    mf = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not mf.get("proceduralMouth"):
+        raise ValueError(f"{manifest_path}: proceduralMouth is false — supply mouth_closed.png artwork instead")
+    cx, cy = mf["mouthCenter"]
+    half_w = int(mf.get("mouthStyle", {}).get("width", 20))
+    line = _hex_bgr(mf.get("mouthStyle", {}).get("line", "#2e2e2e"))
+    size = mf.get("size", [512, 512])
+    canvas = np.zeros((size[1], size[0], 4), np.uint8)
+    # gentle smile arc (lower half of an ellipse), thickness in line with hand-drawn strokes
+    cv2.ellipse(canvas, (int(cx), int(cy)), (half_w, int(half_w * 0.55)),
+                0, 25, 155, (*line, 255), 4, lineType=cv2.LINE_AA)
+    cv2.imwrite(str(out_path), canvas)
+
+
 def derive_mouth_set(closed_path: Path, manifest_path: Path, out_dir: Path) -> None:
     import json
 
@@ -151,6 +173,9 @@ def main() -> int:
         if (out / "mouth_A.png").exists() and "--force" not in sys.argv:
             print(f"refusing to overwrite existing viseme set in {out} (use --force)")
             return 1
+        if not (d / "mouth_closed.png").exists():
+            make_procedural_closed(d / "manifest.json", d / "mouth_closed.png")
+            print("synthesized mouth_closed.png (manifest proceduralMouth: true)")
         derive_mouth_set(d / "mouth_closed.png", d / "manifest.json", out)
         print(f"wrote auto viseme set to {out}")
         return 0

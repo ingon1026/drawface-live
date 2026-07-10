@@ -84,6 +84,10 @@ PYTHONPATH= .venv/bin/python scripts/derive_sprites.py assets/sprites/<name> --a
 
 The auto visemes reuse the character's own closed-mouth stroke as lips (ink
 color/thickness sampled from it) and fill the interior with `mouthStyle` colors.
+If `mouth_closed.png` is absent AND the manifest declares `proceduralMouth: true`
+(e.g. the stick character), a closed-mouth stroke is first synthesized from
+`mouthCenter`/`mouthStyle` — that is the manifest's own definition of the mouth,
+not invented artwork.
 Hand-made viseme art (e.g. the pig's GPT-assisted set) always takes priority —
 `--auto-mouths` refuses to overwrite an existing set without `--force`.
 

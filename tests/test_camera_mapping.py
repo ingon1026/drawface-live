@@ -3,12 +3,16 @@ the mirrored preview must never swap semantic wink control)."""
 
 import pytest
 
-from app.sprite_backend import Hysteresis, eye_key_for_user_side, pick_mouth
+from app.sprite_backend import Hysteresis, TriStateEye, eye_key_for_user_side, pick_mouth
 
 MOUTH_CFG = {
     "jaw_closed": 0.06, "jaw_mid": 0.16, "jaw_large": 0.32,
     "pucker_threshold": 0.40, "funnel_threshold": 0.35,
-    "smile_threshold": 0.30, "smile_sprite": "E",
+    "smile_threshold": 0.30, "smile_sprite": "smile",
+}
+EYES_CFG = {
+    "close_threshold": 0.45, "open_threshold": 0.30,
+    "half_close_threshold": 0.20, "half_open_threshold": 0.12,
 }
 
 
@@ -43,9 +47,20 @@ def test_hysteresis_prevents_flicker():
     assert h.update(0.31) is False          # in the gap: stays open
 
 
+def test_tristate_eye_bands_and_hysteresis():
+    e = TriStateEye(EYES_CFG)
+    assert e.update(0.05) == "open"
+    assert e.update(0.25) == "half"     # crossed half_close (0.20)
+    assert e.update(0.15) == "half"     # inside the half gap: stays half
+    assert e.update(0.50) == "closed"   # crossed full close (0.45)
+    assert e.update(0.35) == "closed"   # inside the full gap: stays closed
+    assert e.update(0.25) == "half"     # dropped below open_threshold (0.30) -> half band
+    assert e.update(0.10) == "open"     # below half_open (0.12) -> fully open
+
+
 def test_mouth_selection_ladder():
     assert pick_mouth({"jawOpen": 0.0}, MOUTH_CFG) == "closed"
-    assert pick_mouth({"jawOpen": 0.02, "mouthSmileLeft": 0.5, "mouthSmileRight": 0.5}, MOUTH_CFG) == "E"
+    assert pick_mouth({"jawOpen": 0.02, "mouthSmileLeft": 0.5, "mouthSmileRight": 0.5}, MOUTH_CFG) == "smile"
     assert pick_mouth({"jawOpen": 0.10}, MOUTH_CFG) == "I"
     assert pick_mouth({"jawOpen": 0.20}, MOUTH_CFG) == "E"
     assert pick_mouth({"jawOpen": 0.40}, MOUTH_CFG) == "A"

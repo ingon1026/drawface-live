@@ -20,4 +20,8 @@ def load_config(path: str | Path) -> dict[str, Any]:
     eyes = cfg["eyes"]
     if eyes["close_threshold"] <= eyes["open_threshold"]:
         raise ValueError("eyes.close_threshold must be > eyes.open_threshold (hysteresis)")
+    if eyes["half_close_threshold"] <= eyes["half_open_threshold"]:
+        raise ValueError("eyes.half_close_threshold must be > eyes.half_open_threshold (hysteresis)")
+    if eyes["half_close_threshold"] >= eyes["close_threshold"]:
+        raise ValueError("half band must sit below the full-close band")
     return cfg

@@ -20,8 +20,8 @@ from app.config import load_config
 from app.face_tracker import FaceTracker, Observation
 from app.sprite_backend import (
     Ema,
-    Hysteresis,
     SpriteCharacter,
+    TriStateEye,
     apply_head_transform,
     eye_key_for_user_side,
     pick_mouth,
@@ -117,10 +117,7 @@ def main() -> int:
     mirror = bool(cfg["control"]["mirror"])
     emas = {k: Ema(cfg["smoothing"]["blend_alpha"]) for k in SMOOTH_KEYS}
     head_emas = {k: Ema(cfg["smoothing"]["head_alpha"]) for k in ("yaw", "pitch", "roll")}
-    hyst = {
-        side: Hysteresis(cfg["eyes"]["close_threshold"], cfg["eyes"]["open_threshold"])
-        for side in ("left", "right")  # keyed by USER side
-    }
+    hyst = {side: TriStateEye(cfg["eyes"]) for side in ("left", "right")}  # keyed by USER side
     calib = Calibration(cfg["calibration"]["frames"])
 
     last_seen = time.monotonic()
@@ -154,7 +151,7 @@ def main() -> int:
                     smoothed = {k: v * (1 - decay) for k, v in smoothed.items()}
                     head = {k: v * (1 - decay) for k, v in head.items()}
 
-            eye_states = {}  # sprite side -> closed?
+            eye_states = {}  # sprite side -> 'open' | 'half' | 'closed'
             for user_side in ("left", "right"):
                 sprite_side = eye_key_for_user_side(user_side, mirror)
                 eye_states[sprite_side] = hyst[user_side].update(smoothed[f"eyeBlink{user_side.capitalize()}"])
@@ -168,7 +165,7 @@ def main() -> int:
 
             if not args.no_debug_overlay:
                 status = "CALIBRATING: look straight, neutral face" if calib.active else (
-                    f"L:{'closed' if eye_states['L'] else 'open'} R:{'closed' if eye_states['R'] else 'open'} "
+                    f"L:{eye_states['L']} R:{eye_states['R']} "
                     f"mouth:{mouth} yaw:{head['yaw']:+.0f} pitch:{head['pitch']:+.0f} roll:{head['roll']:+.0f}"
                 )
                 face = "face:OK" if obs is not None else "face:LOST"

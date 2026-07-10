@@ -74,6 +74,10 @@ elif [ -d "$PIGSRC" ]; then
 else
   echo "  WARNING: sprite source $PIGSRC not found — supply pig artwork into $SPRITES manually"
 fi
+# derived expression sprites (half-eye, smile) — mechanical transforms of existing art
+if [ -f "$SPRITES/base.png" ] && [ ! -f "$SPRITES/eye_L_half.png" ] && [ -x "$PY" ]; then
+  PYTHONPATH= "$PY" "$ROOT/scripts/derive_sprites.py" "$SPRITES" || echo "  sprite derivation failed (non-fatal)"
+fi
 
 echo "== setup summary =="
 echo "  submodule : $([ -f "$SM/run.py" ] && echo present || echo MISSING)"

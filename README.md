@@ -66,7 +66,8 @@ bash scripts/diagnose.sh
 
 MediaPipe Face Landmarker(랜드마크 478점 + blendshape 52채널)로 표정을 추적해
 원본 그림 위에 눈/입 스프라이트를 합성한다. **화풍 100% 보존.** 라이브 웹캠으로 검증 완료:
-윙크 좌/우 독립, 깜빡임(히스테리시스), 입 벌림 단계(I/E/A)·오므림(U/O)·미소, 고개 2.5D 모션.
+윙크 좌/우 독립, 깜빡임·반감김(open/half/closed 3단계 히스테리시스), 입 벌림 단계(I/E/A)·오므림(U/O)·미소(입꼬리 올림), 고개 2.5D 모션.
+half-eye·smile 스프라이트는 기존 그림의 기하 변형으로 파생(`scripts/derive_sprites.py`, setup.sh가 자동 실행) — 새 그림 생성 없음.
 
 ```bash
 bash scripts/setup.sh                     # .venv + face_landmarker.task + 스프라이트 (idempotent)

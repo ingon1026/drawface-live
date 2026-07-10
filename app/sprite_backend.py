@@ -20,10 +20,12 @@ EXPECTED = [
     "mouth_closed.png", "mouth_A.png", "mouth_E.png", "mouth_I.png",
     "mouth_O.png", "mouth_U.png",
 ]
-# CLAUDE.md §6 also lists half-eye states and brow sprites; the pig set has none.
-OPTIONAL = ["eye_L_half.png", "eye_R_half.png", "mouth_M.png"]
+# Derivable via scripts/derive_sprites.py; brow sprites remain unavailable for the pig set.
+OPTIONAL = ["eye_L_half.png", "eye_R_half.png", "mouth_M.png", "mouth_smile.png"]
 
 MOUTH_KEYS = ("closed", "A", "E", "I", "O", "U")
+OPTIONAL_MOUTHS = ("smile", "M")
+EYE_STATES = ("open", "half", "closed")
 
 
 def eye_key_for_user_side(user_side: str, mirror: bool) -> str:
@@ -54,6 +56,19 @@ class Hysteresis:
         elif self.closed and value <= self.open_th:
             self.closed = False
         return self.closed
+
+
+class TriStateEye:
+    """open / half / closed with independent hysteresis bands (no flicker at either edge)."""
+
+    def __init__(self, eyes_cfg: dict) -> None:
+        self.full = Hysteresis(eyes_cfg["close_threshold"], eyes_cfg["open_threshold"])
+        self.half = Hysteresis(eyes_cfg["half_close_threshold"], eyes_cfg["half_open_threshold"])
+
+    def update(self, value: float) -> str:
+        full_closed = self.full.update(value)
+        half_closed = self.half.update(value)
+        return "closed" if full_closed else ("half" if half_closed else "open")
 
 
 class Ema:
@@ -106,11 +121,18 @@ class SpriteCharacter:
         self.base = (base_rgba[:, :, :3].astype(np.float32) * alpha + 255.0 * (1 - alpha)).astype(np.float32)
         self.h, self.w = self.base.shape[:2]
 
-        self.eyes = {
-            side: {state: self._overlay(d / f"eye_{side}_{state}.png") for state in ("open", "closed")}
-            for side in ("L", "R")
-        }
+        self.eyes = {}
+        for side in ("L", "R"):
+            states = {state: self._overlay(d / f"eye_{side}_{state}.png") for state in ("open", "closed")}
+            half_path = d / f"eye_{side}_half.png"
+            # missing half state degrades to open (never fabricate artwork)
+            states["half"] = self._overlay(half_path) if half_path.exists() else states["open"]
+            self.eyes[side] = states
         self.mouths = {k: self._overlay(d / f"mouth_{k}.png") for k in MOUTH_KEYS}
+        for k in OPTIONAL_MOUTHS:
+            p = d / f"mouth_{k}.png"
+            if p.exists():
+                self.mouths[k] = self._overlay(p)
 
     def _load(self, path: Path) -> np.ndarray:
         img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
@@ -126,13 +148,12 @@ class SpriteCharacter:
         a = img[:, :, 3:4].astype(np.float32) / 255.0
         return img[:, :, :3].astype(np.float32) * a, a
 
-    def compose(self, eye_l_closed: bool, eye_r_closed: bool, mouth: str) -> np.ndarray:
+    def compose(self, eye_l: str, eye_r: str, mouth: str) -> np.ndarray:
+        """eye_l/eye_r: one of EYE_STATES; mouth: a key present in self.mouths."""
+        if mouth not in self.mouths:
+            mouth = "closed"
         out = self.base.copy()
-        for premul, a in (
-            self.eyes["L"]["closed" if eye_l_closed else "open"],
-            self.eyes["R"]["closed" if eye_r_closed else "open"],
-            self.mouths[mouth],
-        ):
+        for premul, a in (self.eyes["L"][eye_l], self.eyes["R"][eye_r], self.mouths[mouth]):
             out = premul + out * (1 - a)
         return out.astype(np.uint8)  # BGR
 

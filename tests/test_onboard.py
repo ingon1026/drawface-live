@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw
 
-from app.onboard import build_character, fit_512, snap_to_ink
+from app.onboard import ClickUI, build_character, fit_512, snap_to_ink
 
 
 def _drawing() -> Image.Image:
@@ -17,6 +17,20 @@ def test_snap_to_ink_finds_nearby_dot():
     # the left dot lands near (161, 110) on the canvas; click sloppily nearby
     sx, sy = snap_to_ink(img, 168, 118, 12)
     assert abs(sx - 161) <= 4 and abs(sy - 110) <= 4
+
+
+def test_click_ui_mouth_box_handles_and_normalizes_coordinates():
+    """Geometry helpers work without opening a Tk window."""
+    ui = ClickUI.__new__(ClickUI)
+    ui.points = [(100, 100), (200, 100), (300, 260), (180, 180)]
+
+    assert ui.mouth_box() == (180, 180, 300, 260)
+    assert ui.hit_mouth_box(180, 180) == "nw"
+    assert ui.hit_mouth_box(240, 220) == "move"
+    assert ui.hit_mouth_box(120, 220) is None
+
+    ui.set_mouth_box((190, 185, 310, 270))
+    assert ui.points[2:] == [(190, 185), (310, 270)]
 
 
 def test_build_character_produces_loadable_folder(tmp_path):

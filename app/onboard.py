@@ -109,10 +109,16 @@ def expand_box_to_ink(img: Image.Image, box: tuple[int, int, int, int],
 
 def build_character(canvas_img: Image.Image, out_dir: Path, name: str,
                     eyes: dict[str, tuple[int, int]], eye_half: int,
-                    mouth_box: tuple[int, int, int, int]) -> Path:
-    """All coordinates are 512-canvas pixels. eyes: {'L': (cx, cy), 'R': ...} (snapped to ink)."""
+                    mouth_box: tuple[int, int, int, int], *, expand_mouth: bool = True) -> Path:
+    """Build a character from 512-canvas coordinates.
+
+    Eye clicks are snapped to nearby ink. Headless callers keep the historic
+    mouth auto-expansion; the interactive UI passes ``expand_mouth=False`` so
+    its resizable red box is the exact region that gets used.
+    """
     eyes = {side: snap_to_ink(canvas_img, cx, cy, eye_half) for side, (cx, cy) in eyes.items()}
-    mouth_box = expand_box_to_ink(canvas_img, mouth_box)
+    if expand_mouth:
+        mouth_box = expand_box_to_ink(canvas_img, mouth_box)
     base = canvas_img.copy()
     out_dir.mkdir(parents=True, exist_ok=True)
     d = ImageDraw.Draw(base)
@@ -160,19 +166,25 @@ def derive_all(char_dir: Path) -> None:
 
 
 class ClickUI:
+    HANDLE_RADIUS = 7
+    MIN_MOUTH_SIZE = 12
+
     def __init__(self, root: tk.Tk, canvas_img: Image.Image, out_dir: Path, name: str) -> None:
         self.root = root
         self.img = canvas_img
         self.out_dir = out_dir
         self.name = name
         self.points: list[tuple[int, int]] = []
+        self.drag: tuple[str, int, int, tuple[int, int, int, int]] | None = None
         root.title(f"온보딩 — {name}")
 
         self.canvas = tk.Canvas(root, width=CANVAS, height=CANVAS)
         self.canvas.pack()
         self._photo = ImageTk.PhotoImage(canvas_img)
         self.canvas.create_image(0, 0, anchor="nw", image=self._photo)
-        self.canvas.bind("<Button-1>", self.on_click)
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
 
         bar = tk.Frame(root)
         bar.pack(fill="x", padx=8, pady=6)
@@ -188,25 +200,89 @@ class ClickUI:
 
     def reset(self) -> None:
         self.points.clear()
+        self.drag = None
         self.canvas.delete("mark")
         self.gen_btn.config(state="disabled")
         self.status.set(f"클릭 ①/{len(CLICK_STEPS)}: {CLICK_STEPS[0]}")
 
-    def on_click(self, e: tk.Event) -> None:
+    def mouth_box(self) -> tuple[int, int, int, int]:
+        """Return the two mouth clicks as a normalized rectangle."""
+        (x0, y0), (x1, y1) = self.points[2:4]
+        return min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)
+
+    def set_mouth_box(self, box: tuple[int, int, int, int]) -> None:
+        x0, y0, x1, y1 = box
+        self.points[2] = (round(x0), round(y0))
+        self.points[3] = (round(x1), round(y1))
+
+    def redraw_marks(self) -> None:
+        self.canvas.delete("mark")
+        for x, y in self.points:
+            self.canvas.create_oval(x - 3, y - 3, x + 3, y + 3,
+                                    outline="#e33", width=2, tags="mark")
+        if len(self.points) != len(CLICK_STEPS):
+            return
+        x0, y0, x1, y1 = self.mouth_box()
+        self.canvas.create_rectangle(x0, y0, x1, y1, outline="#e33", width=2, tags="mark")
+        for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+            self.canvas.create_rectangle(x - 4, y - 4, x + 4, y + 4,
+                                         fill="white", outline="#e33", width=2, tags="mark")
+
+    def hit_mouth_box(self, x: int, y: int) -> str | None:
+        """Return a resize handle or 'move' for the current mouth rectangle."""
+        if len(self.points) != len(CLICK_STEPS):
+            return None
+        x0, y0, x1, y1 = self.mouth_box()
+        for handle, cx, cy in (("nw", x0, y0), ("ne", x1, y0),
+                               ("se", x1, y1), ("sw", x0, y1)):
+            if abs(x - cx) <= self.HANDLE_RADIUS and abs(y - cy) <= self.HANDLE_RADIUS:
+                return handle
+        return "move" if x0 <= x <= x1 and y0 <= y <= y1 else None
+
+    def on_press(self, e: tk.Event) -> None:
         if len(self.points) >= len(CLICK_STEPS):
+            handle = self.hit_mouth_box(e.x, e.y)
+            if handle:
+                self.drag = (handle, e.x, e.y, self.mouth_box())
             return
         self.points.append((e.x, e.y))
-        self.canvas.create_oval(e.x - 3, e.y - 3, e.x + 3, e.y + 3,
-                                outline="#e33", width=2, tags="mark")
         if len(self.points) == len(CLICK_STEPS):
-            x0, y0 = self.points[2]
-            x1, y1 = self.points[3]
-            self.canvas.create_rectangle(x0, y0, x1, y1, outline="#e33", tags="mark")
             self.gen_btn.config(state="normal")
-            self.status.set("좌표 완료 — [생성]을 누르세요")
+            self.status.set("좌표 완료 — 모서리 드래그로 크기 조절, 박스 안을 드래그해 이동 후 [생성]")
         else:
             n = len(self.points)
             self.status.set(f"클릭 {'①②③④'[n]}/{len(CLICK_STEPS)}: {CLICK_STEPS[n]}")
+        self.redraw_marks()
+
+    def on_drag(self, e: tk.Event) -> None:
+        if not self.drag:
+            return
+        handle, start_x, start_y, original = self.drag
+        left, top, right, bottom = original
+        if handle == "move":
+            width, height = right - left, bottom - top
+            left = max(0, min(CANVAS - width, left + e.x - start_x))
+            top = max(0, min(CANVAS - height, top + e.y - start_y))
+            right, bottom = left + width, top + height
+        elif handle == "nw":
+            left = max(0, min(right - self.MIN_MOUTH_SIZE, e.x))
+            top = max(0, min(bottom - self.MIN_MOUTH_SIZE, e.y))
+        elif handle == "ne":
+            right = min(CANVAS, max(left + self.MIN_MOUTH_SIZE, e.x))
+            top = max(0, min(bottom - self.MIN_MOUTH_SIZE, e.y))
+        elif handle == "se":
+            right = min(CANVAS, max(left + self.MIN_MOUTH_SIZE, e.x))
+            bottom = min(CANVAS, max(top + self.MIN_MOUTH_SIZE, e.y))
+        elif handle == "sw":
+            left = max(0, min(right - self.MIN_MOUTH_SIZE, e.x))
+            bottom = min(CANVAS, max(top + self.MIN_MOUTH_SIZE, e.y))
+        self.set_mouth_box((left, top, right, bottom))
+        self.redraw_marks()
+
+    def on_release(self, _e: tk.Event) -> None:
+        if self.drag:
+            self.drag = None
+            self.status.set("입 영역을 조정했습니다 — [생성]을 누르세요")
 
     def generate(self) -> None:
         (lx, ly), (rx, ry), (mx0, my0), (mx1, my1) = self.points
@@ -215,7 +291,8 @@ class ClickUI:
         self.root.update()
         try:
             build_character(self.img, self.out_dir, self.name,
-                            {"L": (lx, ly), "R": (rx, ry)}, self.eye_half.get(), mouth)
+                            {"L": (lx, ly), "R": (rx, ry)}, self.eye_half.get(), mouth,
+                            expand_mouth=False)
             derive_all(self.out_dir)
         except subprocess.CalledProcessError as err:
             tail = (err.stderr or "").strip().splitlines()[-1:] or [f"exit {err.returncode}"]

@@ -5,7 +5,6 @@
 
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
-[![No Server](https://img.shields.io/badge/서버-없음_·_100%25_브라우저-8a2be2)](#프라이버시)
 
 ![표정 상태](docs/img/pig_states.png)
 

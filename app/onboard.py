@@ -79,11 +79,40 @@ def snap_to_ink(img: Image.Image, cx: int, cy: int, r: int) -> tuple[int, int]:
     return box[0] + mx, box[1] + my
 
 
+def expand_box_to_ink(img: Image.Image, box: tuple[int, int, int, int],
+                      pad: int = 4, cap_scale: float = 2.5, max_iter: int = 8) -> tuple[int, int, int, int]:
+    """Grow a mouth box until it covers the whole drawn mouth (deep open mouths
+    otherwise get erased partially and the leftover reads as a second mouth).
+    Growth is capped so ink touching the face outline can't swallow the face."""
+    import numpy as np
+
+    a = np.asarray(img.convert("RGB"), dtype=np.int32).sum(axis=2)
+    x0, y0, x1, y1 = (int(v) for v in box)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    max_w, max_h = max(24, (x1 - x0) * cap_scale), max(24, (y1 - y0) * cap_scale)
+    bx0, by0 = int(cx - max_w / 2), int(cy - max_h / 2)
+    bx1, by1 = int(cx + max_w / 2), int(cy + max_h / 2)
+
+    for _ in range(max_iter):
+        sy, ey = max(0, max(by0, y0 - pad)), min(a.shape[0], min(by1, y1 + pad) + 1)
+        sx, ex = max(0, max(bx0, x0 - pad)), min(a.shape[1], min(bx1, x1 + pad) + 1)
+        ys, xs = np.where(a[sy:ey, sx:ex] < 300)
+        if not len(ys):
+            break
+        grown = (min(sx + xs.min(), x0), min(sy + ys.min(), y0),
+                 max(sx + xs.max(), x1), max(sy + ys.max(), y1))
+        if grown == (x0, y0, x1, y1):
+            break
+        x0, y0, x1, y1 = grown
+    return x0 - 2, y0 - 2, x1 + 2, y1 + 2
+
+
 def build_character(canvas_img: Image.Image, out_dir: Path, name: str,
                     eyes: dict[str, tuple[int, int]], eye_half: int,
                     mouth_box: tuple[int, int, int, int]) -> Path:
     """All coordinates are 512-canvas pixels. eyes: {'L': (cx, cy), 'R': ...} (snapped to ink)."""
     eyes = {side: snap_to_ink(canvas_img, cx, cy, eye_half) for side, (cx, cy) in eyes.items()}
+    mouth_box = expand_box_to_ink(canvas_img, mouth_box)
     base = canvas_img.copy()
     out_dir.mkdir(parents=True, exist_ok=True)
     d = ImageDraw.Draw(base)

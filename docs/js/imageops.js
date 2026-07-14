@@ -126,3 +126,42 @@ export function inkColor(canvas, box) {
   if (!R.length) return "#1a1a1a";
   return rgbToHex(median(R), median(G), median(B));
 }
+
+// Grow a mouth box until it covers the whole connected ink blob (deep open
+// mouths drawn with an interior otherwise get erased only partially and the
+// leftover reads as a "second mouth"). Growth is capped so a mouth stroke
+// touching the face outline cannot swallow the face.
+export function expandBoxToInk(canvas, box, pad = 4, capScale = 2.5, maxIter = 8) {
+  const { data, width, height } = getData(canvas);
+  const ink = (x, y) => {
+    const i = (y * width + x) * 4;
+    return data[i] + data[i + 1] + data[i + 2] < 300;
+  };
+  let [x0, y0, x1, y1] = box.map(Math.round);
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const maxW = Math.max(24, (x1 - x0) * capScale), maxH = Math.max(24, (y1 - y0) * capScale);
+  const bound = [cx - maxW / 2, cy - maxH / 2, cx + maxW / 2, cy + maxH / 2].map(Math.round);
+
+  for (let it = 0; it < maxIter; it++) {
+    let nx0 = Infinity, ny0 = Infinity, nx1 = -Infinity, ny1 = -Infinity;
+    const sx = Math.max(0, Math.max(bound[0], x0 - pad));
+    const sy = Math.max(0, Math.max(bound[1], y0 - pad));
+    const ex = Math.min(width - 1, Math.min(bound[2], x1 + pad));
+    const ey = Math.min(height - 1, Math.min(bound[3], y1 + pad));
+    for (let y = sy; y <= ey; y++) {
+      for (let x = sx; x <= ex; x++) {
+        if (ink(x, y)) {
+          if (x < nx0) nx0 = x;
+          if (y < ny0) ny0 = y;
+          if (x > nx1) nx1 = x;
+          if (y > ny1) ny1 = y;
+        }
+      }
+    }
+    if (nx0 === Infinity) break; // no ink at all — keep the clicked box
+    const grown = [Math.min(nx0, x0), Math.min(ny0, y0), Math.max(nx1, x1), Math.max(ny1, y1)];
+    if (grown[0] === x0 && grown[1] === y0 && grown[2] === x1 && grown[3] === y1) break;
+    [x0, y0, x1, y1] = grown;
+  }
+  return [x0 - 2, y0 - 2, x1 + 2, y1 + 2];
+}

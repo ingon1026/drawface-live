@@ -1,6 +1,6 @@
 // DrawFace Live web — UI wiring and the render loop (browser twin of app/main.py).
 import { CONFIG } from "./config.js";
-import { fit512 } from "./imageops.js";
+import { fit512, expandBoxToInk } from "./imageops.js";
 import { buildCharacter } from "./onboard.js";
 import { deriveAll } from "./derive.js";
 import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js";
@@ -94,6 +94,7 @@ async function openOnboarding(file) {
   if (auto && ob.points.length === 0) {
     ob.points = [auto.eyes.L, auto.eyes.R,
                  [auto.mouthBox[0], auto.mouthBox[1]], [auto.mouthBox[2], auto.mouthBox[3]]];
+    expandMouthPoints(); // landmark lip box misses deep open-mouth interiors
     $("eyeHalf").value = auto.eyeHalf;
     obRedraw();
     obStatus();
@@ -103,13 +104,28 @@ async function openOnboarding(file) {
   }
 }
 
+// After the 4th click (or auto-detect), grow the mouth box to cover the whole
+// drawn mouth — deep open mouths otherwise leave leftovers ("second mouth").
+function expandMouthPoints() {
+  const [, , [mx0, my0], [mx1, my1]] = ob.points;
+  const box = expandBoxToInk(ob.img,
+    [Math.min(mx0, mx1), Math.min(my0, my1), Math.max(mx0, mx1), Math.max(my0, my1)]);
+  ob.points[2] = [box[0], box[1]];
+  ob.points[3] = [box[2], box[3]];
+}
+
 $("onboardCanvas").addEventListener("click", (e) => {
   if (ob.points.length >= 4) return;
   const r = e.target.getBoundingClientRect();
   ob.points.push([Math.round((e.clientX - r.left) * 512 / r.width),
                   Math.round((e.clientY - r.top) * 512 / r.height)]);
+  if (ob.points.length === 4) {
+    expandMouthPoints();
+    $("onboardStatus").textContent = "입 영역을 잉크에 맞춰 자동 확장했습니다 — 빨간 사각형 확인 후 [생성]";
+  }
   obRedraw();
-  obStatus();
+  if (ob.points.length !== 4) obStatus();
+  else $("obGenerate").disabled = !$("charName").value.trim();
 });
 $("charName").addEventListener("input", obStatus);
 $("obReset").onclick = () => { ob.points = []; obRedraw(); obStatus(); };

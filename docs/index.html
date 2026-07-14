@@ -25,6 +25,7 @@
       그림을 끌어다 놓거나<br>클릭해서 선택
       <input id="fileInput" type="file" accept="image/*" hidden>
     </div>
+    <button id="exampleBtn">예시 캐릭터로 체험</button>
 
     <label>카메라
       <select id="camSelect"></select>
@@ -35,8 +36,9 @@
 
     <button id="startBtn" class="primary">시작</button>
     <button id="calibBtn" disabled>재캘리브레이션</button>
+    <button id="recordBtn" disabled title="결과 캔버스를 WebM 영상으로 저장">녹화 시작</button>
 
-    <div id="status">캐릭터를 온보딩하거나 선택하세요</div>
+    <div id="status" role="status" aria-live="polite">캐릭터를 온보딩하거나 선택하세요</div>
   </aside>
 
   <section id="stage">
@@ -55,9 +57,25 @@
   <div id="onboardStatus"></div>
   <div class="row">
     <button id="obReset">다시 클릭</button>
-    <button id="obGenerate" class="primary" disabled>생성</button>
+    <button id="obGenerate" class="primary" disabled>미리보기</button>
     <button id="obCancel">취소</button>
   </div>
+  <section id="onboardReview" hidden>
+    <h3>생성 결과 미리보기</h3>
+    <canvas id="reviewCanvas" width="512" height="512"></canvas>
+    <label>표정
+      <select id="reviewState">
+        <option value="neutral">기본</option>
+        <option value="blink">눈 감기</option>
+        <option value="smile">미소</option>
+        <option value="A">입 크게 벌리기</option>
+      </select>
+    </label>
+    <div class="row">
+      <button id="obEdit">위치 수정</button>
+      <button id="obSave" class="primary">이 캐릭터 저장</button>
+    </div>
+  </section>
 </dialog>
 
 <footer>

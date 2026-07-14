@@ -1,6 +1,6 @@
 // DrawFace Live web — UI wiring and the render loop (browser twin of app/main.py).
 import { CANVAS, CONFIG } from "./config.js";
-import { fit512, expandBoxToInk } from "./imageops.js";
+import { fit512, expandBoxToInk, newCanvas } from "./imageops.js";
 import { buildCharacter } from "./onboard.js";
 import { deriveAll } from "./derive.js";
 import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js";
@@ -58,13 +58,15 @@ function refreshList(selectName) {
 }
 
 // ---------- onboarding ----------
-const ob = { img: null, points: [] };
+const BOX_HANDLE_RADIUS = 12;
+const BOX_MIN_SIZE = 12;
+const ob = { img: null, points: [], draft: null, previewChar: null, drag: null };
 
 function obStatus() {
   const n = ob.points.length;
   $("onboardStatus").textContent = n < 4
     ? `클릭 ${n + 1}/4: ${CLICK_STEPS[n]}`
-    : "좌표 완료 — 이름을 확인하고 [생성]";
+    : "좌표 완료 — 이름을 확인하고 [미리보기]";
   $("obGenerate").disabled = n < 4 || !$("charName").value.trim();
 }
 
@@ -76,14 +78,69 @@ function obRedraw() {
   ob.points.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.stroke(); });
   if (ob.points.length === 4) {
     const [, , [x0, y0], [x1, y1]] = ob.points;
-    ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
+    const left = Math.min(x0, x1), top = Math.min(y0, y1);
+    const right = Math.max(x0, x1), bottom = Math.max(y0, y1);
+    ctx.strokeRect(left, top, right - left, bottom - top);
+    ctx.fillStyle = "#fff";
+    for (const [x, y] of [[left, top], [right, top], [right, bottom], [left, bottom]]) {
+      ctx.fillRect(x - 4, y - 4, 8, 8);
+      ctx.strokeRect(x - 4, y - 4, 8, 8);
+    }
   }
+}
+
+function onboardPoint(e) {
+  const r = e.currentTarget.getBoundingClientRect();
+  return {
+    x: Math.max(0, Math.min(CANVAS, Math.round((e.clientX - r.left) * CANVAS / r.width))),
+    y: Math.max(0, Math.min(CANVAS, Math.round((e.clientY - r.top) * CANVAS / r.height))),
+  };
+}
+
+function mouthBox() {
+  const [, , [ax, ay], [bx, by]] = ob.points;
+  return { left: Math.min(ax, bx), top: Math.min(ay, by), right: Math.max(ax, bx), bottom: Math.max(ay, by) };
+}
+
+function setMouthBox({ left, top, right, bottom }) {
+  ob.points[2] = [Math.round(left), Math.round(top)];
+  ob.points[3] = [Math.round(right), Math.round(bottom)];
+}
+
+function boxHit(x, y) {
+  if (ob.points.length !== 4) return null;
+  const box = mouthBox();
+  const corners = [
+    ["nw", box.left, box.top], ["ne", box.right, box.top],
+    ["se", box.right, box.bottom], ["sw", box.left, box.bottom],
+  ];
+  for (const [handle, cx, cy] of corners) {
+    if (Math.abs(x - cx) <= BOX_HANDLE_RADIUS && Math.abs(y - cy) <= BOX_HANDLE_RADIUS) return handle;
+  }
+  return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom ? "move" : null;
+}
+
+function cursorForBoxHit(hit) {
+  if (hit === "move") return "move";
+  if (hit === "nw" || hit === "se") return "nwse-resize";
+  if (hit === "ne" || hit === "sw") return "nesw-resize";
+  return "crosshair";
+}
+
+function invalidateOnboardingPreview() {
+  ob.draft = null;
+  ob.previewChar = null;
+  $("onboardReview").hidden = true;
 }
 
 async function openOnboarding(file) {
   const bmp = await createImageBitmap(file);
   ob.img = fit512(bmp);
   ob.points = [];
+  ob.drag = null;
+  ob.draft = null;
+  ob.previewChar = null;
+  $("onboardReview").hidden = true;
   $("charName").value = file.name.replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "-").toLowerCase();
   $("onboardDlg").showModal();
   obRedraw();
@@ -98,7 +155,7 @@ async function openOnboarding(file) {
     $("eyeHalf").value = auto.eyeHalf;
     obRedraw();
     obStatus();
-    $("onboardStatus").textContent = "얼굴 자동 인식됨 — 위치가 맞으면 [생성], 틀리면 [다시 클릭]";
+    $("onboardStatus").textContent = "얼굴 자동 인식됨 — 박스 모서리로 크기 조절, 내부 드래그로 이동 후 [미리보기]";
   } else if (ob.points.length === 0) {
     obStatus(); // manual flow from step ①
   }
@@ -116,19 +173,79 @@ function expandMouthPoints() {
 
 $("onboardCanvas").addEventListener("click", (e) => {
   if (ob.points.length >= 4) return;
-  const r = e.target.getBoundingClientRect();
-  ob.points.push([Math.round((e.clientX - r.left) * CANVAS / r.width),
-                  Math.round((e.clientY - r.top) * CANVAS / r.height)]);
+  const { x, y } = onboardPoint(e);
+  ob.points.push([x, y]);
   if (ob.points.length === 4) {
     expandMouthPoints();
-    $("onboardStatus").textContent = "입 영역을 잉크에 맞춰 자동 확장했습니다 — 빨간 사각형 확인 후 [생성]";
+    $("onboardStatus").textContent = "입 영역을 잉크에 맞춰 자동 확장했습니다 — 모서리로 크기 조절, 내부 드래그로 이동할 수 있습니다";
   }
   obRedraw();
   if (ob.points.length !== 4) obStatus();
   else $("obGenerate").disabled = !$("charName").value.trim();
 });
+
+$("onboardCanvas").addEventListener("pointerdown", (e) => {
+  const { x, y } = onboardPoint(e);
+  const handle = boxHit(x, y);
+  if (!handle) return;
+  invalidateOnboardingPreview();
+  ob.drag = { handle, startX: x, startY: y, box: mouthBox() };
+  e.currentTarget.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+$("onboardCanvas").addEventListener("pointermove", (e) => {
+  const { x, y } = onboardPoint(e);
+  const canvas = e.currentTarget;
+  if (!ob.drag) {
+    canvas.style.cursor = cursorForBoxHit(boxHit(x, y));
+    return;
+  }
+
+  const { handle, startX, startY, box } = ob.drag;
+  let { left, top, right, bottom } = box;
+  if (handle === "move") {
+    const width = right - left, height = bottom - top;
+    left = Math.max(0, Math.min(CANVAS - width, left + x - startX));
+    top = Math.max(0, Math.min(CANVAS - height, top + y - startY));
+    right = left + width;
+    bottom = top + height;
+  } else if (handle === "nw") {
+    left = Math.max(0, Math.min(right - BOX_MIN_SIZE, x));
+    top = Math.max(0, Math.min(bottom - BOX_MIN_SIZE, y));
+  } else if (handle === "ne") {
+    right = Math.min(CANVAS, Math.max(left + BOX_MIN_SIZE, x));
+    top = Math.max(0, Math.min(bottom - BOX_MIN_SIZE, y));
+  } else if (handle === "se") {
+    right = Math.min(CANVAS, Math.max(left + BOX_MIN_SIZE, x));
+    bottom = Math.min(CANVAS, Math.max(top + BOX_MIN_SIZE, y));
+  } else if (handle === "sw") {
+    left = Math.max(0, Math.min(right - BOX_MIN_SIZE, x));
+    bottom = Math.min(CANVAS, Math.max(top + BOX_MIN_SIZE, y));
+  }
+  setMouthBox({ left, top, right, bottom });
+  obRedraw();
+  canvas.style.cursor = cursorForBoxHit(handle);
+  e.preventDefault();
+});
+
+function endBoxDrag(e) {
+  if (!ob.drag) return;
+  ob.drag = null;
+  e.currentTarget.style.cursor = "crosshair";
+  $("onboardStatus").textContent = "입 영역을 조정했습니다 — [미리보기]로 결과를 확인하세요";
+}
+
+$("onboardCanvas").addEventListener("pointerup", endBoxDrag);
+$("onboardCanvas").addEventListener("pointercancel", endBoxDrag);
 $("charName").addEventListener("input", obStatus);
-$("obReset").onclick = () => { ob.points = []; obRedraw(); obStatus(); };
+$("obReset").onclick = () => {
+  ob.points = [];
+  ob.drag = null;
+  invalidateOnboardingPreview();
+  obRedraw();
+  obStatus();
+};
 $("obCancel").onclick = () => $("onboardDlg").close();
 $("obGenerate").onclick = () => {
   const name = $("charName").value.trim();
@@ -138,12 +255,45 @@ $("obGenerate").onclick = () => {
     const { manifest, canvases } = buildCharacter(ob.img, name, { L, R },
       Number($("eyeHalf").value) || 16, mouth);
     deriveAll(canvases, manifest);
-    saveCharacter(name, manifest, canvases);
-    refreshList(name);
-    $("onboardDlg").close();
-    status(`캐릭터 '${name}' 생성 완료 — 시작을 누르세요`);
+    ob.draft = { name, manifest, canvases };
+    ob.previewChar = prepareCharacter(ob.draft);
+    $("onboardReview").hidden = false;
+    renderOnboardingPreview();
+    $("onboardStatus").textContent = "표정별 결과를 확인한 뒤 저장하거나 위치를 수정하세요";
   } catch (err) {
-    $("onboardStatus").textContent = `생성 실패: ${err.message}`;
+    $("onboardStatus").textContent = `미리보기 생성 실패: ${err.message}`;
+  }
+};
+
+function renderOnboardingPreview() {
+  if (!ob.previewChar) return;
+  const state = $("reviewState").value;
+  const expressions = {
+    neutral: ["open", "open", "closed"],
+    blink: ["closed", "closed", "closed"],
+    smile: ["open", "open", "smile"],
+    A: ["open", "open", "A"],
+  };
+  const [eyeL, eyeR, mouth] = expressions[state] ?? expressions.neutral;
+  const ctx = $("reviewCanvas").getContext("2d");
+  ctx.clearRect(0, 0, CANVAS, CANVAS);
+  ctx.drawImage(composeCharacter(ob.previewChar, eyeL, eyeR, mouth), 0, 0);
+}
+
+$("reviewState").onchange = renderOnboardingPreview;
+$("obEdit").onclick = () => {
+  invalidateOnboardingPreview();
+  $("onboardStatus").textContent = "빨간 박스 모서리를 드래그해 크기를 조절하거나, 내부를 드래그해 이동하세요";
+};
+$("obSave").onclick = () => {
+  if (!ob.draft) return;
+  try {
+    saveCharacter(ob.draft.name, ob.draft.manifest, ob.draft.canvases);
+    refreshList(ob.draft.name);
+    $("onboardDlg").close();
+    status(`캐릭터 '${ob.draft.name}' 저장 완료 — 시작을 누르세요`);
+  } catch (err) {
+    $("onboardStatus").textContent = `저장 실패: ${err.message}`;
   }
 };
 
@@ -160,13 +310,51 @@ dz.ondrop = (e) => {
   if (f) openOnboarding(f);
 };
 
+function exampleDrawing() {
+  const c = newCanvas(CANVAS, CANVAS);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fffaf3";
+  ctx.fillRect(0, 0, CANVAS, CANVAS);
+  ctx.fillStyle = "#f2a1ad";
+  ctx.strokeStyle = "#4d3038";
+  ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.ellipse(256, 298, 160, 145, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  for (const [x, y, angle] of [[145, 172, -0.45], [367, 172, 0.45]]) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+    ctx.beginPath(); ctx.ellipse(0, 0, 58, 42, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle = "#f8bbc3";
+  ctx.beginPath(); ctx.ellipse(256, 315, 89, 57, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#4d3038";
+  for (const x of [198, 314]) { ctx.beginPath(); ctx.ellipse(x, 238, 8, 11, 0, 0, Math.PI * 2); ctx.fill(); }
+  ctx.beginPath(); ctx.ellipse(224, 312, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(288, 312, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(256, 332, 35, 0.12 * Math.PI, 0.88 * Math.PI); ctx.stroke();
+  return c;
+}
+
+$("exampleBtn").onclick = () => {
+  try {
+    const name = "예시 돼지";
+    const { manifest, canvases } = buildCharacter(exampleDrawing(), name,
+      { L: [198, 238], R: [314, 238] }, 18, [210, 294, 302, 352]);
+    deriveAll(canvases, manifest);
+    saveCharacter(name, manifest, canvases);
+    refreshList(name);
+    status("예시 캐릭터를 불러왔습니다 — 시작을 눌러 웹캠 표정을 따라 해보세요");
+  } catch (err) {
+    status(`예시 캐릭터 생성 실패: ${err.message}`);
+  }
+};
+
 $("deleteBtn").onclick = () => {
   const name = $("charSelect").value;
   if (name && confirm(`'${name}' 캐릭터를 삭제할까요?`)) { deleteCharacter(name); refreshList(); }
 };
 
 // ---------- live loop ----------
-const run = { on: false, stream: null, tracker: null, raf: 0 };
+const run = { on: false, stream: null, tracker: null, video: null, raf: 0, videoFrame: 0, recording: null };
 
 async function start() {
   const name = $("charSelect").value;
@@ -189,6 +377,7 @@ async function start() {
     video.playsInline = true;
     video.srcObject = run.stream;
     await video.play();
+    run.video = video;
 
     const char = prepareCharacter(await loadCharacter(name));
     const st = {
@@ -208,6 +397,7 @@ async function start() {
     $("startBtn").textContent = "정지";
     $("startBtn").disabled = false;
     $("calibBtn").disabled = false;
+    $("recordBtn").disabled = !("MediaRecorder" in window && "captureStream" in $("output"));
     $("calibBtn").onclick = () => st.calib.restart();
     $("mirrorChk").onchange = () => { st.mirror = $("mirrorChk").checked; };
     window.onkeydown = (e) => {
@@ -222,20 +412,39 @@ async function start() {
 }
 
 function loop(video, char, st) {
-  if (!run.on) return;
-  try {
-    loopBody(video, char, st);
-  } catch (err) {
-    status(`루프 오류: ${err.message}`);
-    console.error(err);
-    stop();
-    return;
-  }
-  run.raf = requestAnimationFrame(() => loop(video, char, st));
+  const render = (now) => {
+    if (!run.on) return;
+    try {
+      loopBody(video, char, st, now);
+    } catch (err) {
+      status(`루프 오류: ${err.message}`);
+      console.error(err);
+      stop();
+      return;
+    }
+    schedule();
+  };
+  const schedule = () => {
+    if (!run.on) return;
+    if (typeof video.requestVideoFrameCallback === "function") {
+      run.videoFrame = video.requestVideoFrameCallback((now) => render(now));
+    } else {
+      const tick = (now) => {
+        if (!run.on) return;
+        if (video.currentTime !== st.lastVideoTime) {
+          st.lastVideoTime = video.currentTime;
+          render(now);
+        } else {
+          run.raf = requestAnimationFrame(tick);
+        }
+      };
+      run.raf = requestAnimationFrame(tick);
+    }
+  };
+  schedule();
 }
 
-function loopBody(video, char, st) {
-  const now = performance.now();
+function loopBody(video, char, st, now) {
   const obs = run.tracker.detect(video, now);
 
   if (obs) {
@@ -302,14 +511,63 @@ function drawPreview(video, obs, st) {
 function stop() {
   run.on = false;
   cancelAnimationFrame(run.raf);
+  if (run.videoFrame && run.video?.cancelVideoFrameCallback) run.video.cancelVideoFrameCallback(run.videoFrame);
+  run.videoFrame = 0;
+  stopRecording();
   run.stream?.getTracks().forEach((t) => t.stop());
   run.stream = null;
+  run.video = null;
   window.onkeydown = null;
   $("startBtn").textContent = "시작";
   $("startBtn").disabled = $("charSelect").options.length === 0;
   $("calibBtn").disabled = true;
+  $("recordBtn").disabled = true;
+  $("recordBtn").textContent = "녹화 시작";
   status("정지됨");
 }
+
+function recordMimeType() {
+  return ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+    .find((type) => MediaRecorder.isTypeSupported(type));
+}
+
+function startRecording() {
+  if (!run.on || run.recording || !("MediaRecorder" in window) || !("captureStream" in $("output"))) return;
+  const mimeType = recordMimeType();
+  if (!mimeType) { status("이 브라우저는 WebM 녹화를 지원하지 않습니다"); return; }
+  const stream = $("output").captureStream(30);
+  const recording = { stream, chunks: [], recorder: null };
+  const recorder = recording.recorder = new MediaRecorder(stream, { mimeType });
+  recorder.ondataavailable = (e) => { if (e.data.size) recording.chunks.push(e.data); };
+  recorder.onerror = () => status("녹화 중 오류가 발생했습니다");
+  recorder.onstop = () => {
+    stream.getTracks().forEach((track) => track.stop());
+    if (recording.chunks.length) {
+      const blob = new Blob(recording.chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `drawface-live-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      status("녹화 완료 — WebM 다운로드를 시작했습니다");
+    }
+    if (run.recording === recording) run.recording = null;
+    $("recordBtn").textContent = "녹화 시작";
+  };
+  run.recording = recording;
+  recorder.start(1000);
+  $("recordBtn").textContent = "녹화 종료";
+  status("녹화 중 — 결과 캔버스만 WebM으로 저장합니다");
+}
+
+function stopRecording() {
+  const recording = run.recording;
+  if (!recording) return;
+  if (recording.recorder.state !== "inactive") recording.recorder.stop();
+}
+
+$("recordBtn").onclick = () => (run.recording ? stopRecording() : startRecording());
 
 $("startBtn").onclick = () => (run.on ? stop() : start());
 

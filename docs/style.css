@@ -43,10 +43,14 @@ dialog {
 }
 dialog::backdrop { background: rgba(0,0,0,.6); }
 dialog h2 { margin: 0 0 10px; font-size: 16px; }
-#onboardCanvas { cursor: crosshair; background: #fff; border-radius: 6px; }
+#onboardCanvas { cursor: crosshair; touch-action: none; background: #fff; border-radius: 6px; }
 #onboardStatus { font-size: 13px; color: #9fd3b4; margin: 8px 0; min-height: 1.2em; }
 dialog .row { margin-top: 6px; justify-content: flex-end; }
 dialog .row label { font-size: 13px; display: flex; gap: 4px; align-items: center; }
+#onboardReview { margin-top: 14px; border-top: 1px solid #3a3f47; padding-top: 12px; }
+#onboardReview h3 { margin: 0 0 8px; font-size: 14px; }
+#reviewCanvas { display: block; width: 256px; height: 256px; background: #fff; border-radius: 6px; margin-bottom: 8px; }
+#onboardReview > label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 
 footer {
   padding: 8px 20px 16px; color: #9aa0a8; font-size: 12px;

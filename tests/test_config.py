@@ -23,8 +23,11 @@ def test_missing_section_rejected(tmp_path):
 
 
 def test_broken_hysteresis_rejected(tmp_path):
-    src = (ROOT / "configs" / "app.yaml").read_text()
+    import yaml
+
+    cfg = yaml.safe_load((ROOT / "configs" / "app.yaml").read_text())
+    cfg["eyes"]["close_threshold"] = 0.1  # below open_threshold -> invalid
     p = tmp_path / "bad.yaml"
-    p.write_text(src.replace("close_threshold: 0.45", "close_threshold: 0.1"))
+    p.write_text(yaml.safe_dump(cfg))
     with pytest.raises(ValueError, match="hysteresis"):
         load_config(p)

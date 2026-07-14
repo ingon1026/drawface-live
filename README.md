@@ -51,6 +51,8 @@ PYTHONPATH= .venv/bin/python -m app.ui
 | `jawOpen` 크기 | 입 I → E → A 단계 전환 |
 | `mouthPucker` / `mouthFunnel` | U / O |
 | `mouthSmile` (입 다문 상태) | smile |
+| 눈썹 blendshape (`browInnerUp`·`browOuterUp`·`browDown`) | 눈썹 스프라이트 상하 오프셋 — manifest `browRange`>0 + `brow_L/R.png`일 때 |
+| 시선 (`eyeLook*` 8채널) | 동공 스프라이트 이동(깜빡임 중 감쇠) — manifest `pupilRange`>0 + `pupil_L/R.png`일 때 |
 | 얼굴 변환 행렬 (yaw/pitch/roll) | 캔버스 2.5D 이동·회전 |
 | 얼굴 소실 | 마지막 표정 유지 후 중립으로 감쇠 복귀 |
 

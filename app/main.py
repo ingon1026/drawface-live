@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+import tkinter as tk
 from pathlib import Path
 
 import cv2
@@ -24,6 +25,7 @@ from app.sprite_backend import (
     TriStateEye,
     apply_head_transform,
     eye_key_for_user_side,
+    gaze_to_shift,
     pick_mouth,
 )
 
@@ -32,7 +34,59 @@ log = logging.getLogger("drawface")
 SMOOTH_KEYS = (
     "eyeBlinkLeft", "eyeBlinkRight", "jawOpen",
     "mouthSmileLeft", "mouthSmileRight", "mouthPucker", "mouthFunnel",
+    # brow offset + gaze channels (used only when the character enables them)
+    "browInnerUp", "browDownLeft", "browDownRight", "browOuterUpLeft", "browOuterUpRight",
+    "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight",
+    "eyeLookUpLeft", "eyeLookUpRight", "eyeLookDownLeft", "eyeLookDownRight",
 )
+
+
+class TkDisplay:
+    """Render frames in a Tk window.
+
+    cv2.imshow (Qt/XCB shared-memory path) bus-errors under some WSLg states;
+    Tk uses plain X11 image puts and keeps working, so the video is shown via
+    tk.PhotoImage instead. Runs on the main thread with update() per frame.
+    """
+
+    def __init__(self, title: str) -> None:
+        self.root = tk.Tk()
+        self.root.title(title)
+        self.label = tk.Label(self.root)
+        self.label.pack()
+        self._key: str | None = None
+        self._closed = False
+        self.root.bind("<Key>", self._on_key)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.attributes("-topmost", True)
+        self.root.after(1500, lambda: self.root.attributes("-topmost", False))
+
+    def _on_key(self, event: tk.Event) -> None:
+        self._key = event.keysym.lower()
+
+    def _on_close(self) -> None:
+        self._closed = True
+
+    def show(self, frame_bgr: np.ndarray) -> str | None:
+        """Display a BGR frame; return 'quit', a pressed key, or None."""
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        h, w = rgb.shape[:2]
+        self._img = tk.PhotoImage(data=b"P6 %d %d 255\n" % (w, h) + rgb.tobytes())
+        self.label.configure(image=self._img)
+        try:
+            self.root.update()
+        except tk.TclError:
+            self._closed = True
+        key, self._key = self._key, None
+        if self._closed or key in ("q", "escape"):
+            return "quit"
+        return key
+
+    def destroy(self) -> None:
+        try:
+            self.root.destroy()
+        except tk.TclError:
+            pass
 
 
 class Calibration:
@@ -117,7 +171,9 @@ def main() -> int:
     camera = LatestFrameCamera(cam_index, cfg["camera"]["width"], cfg["camera"]["height"])
 
     mirror = cfg["control"]["mirror"] if args.mirror is None else args.mirror == "on"
-    emas = {k: Ema(cfg["smoothing"]["blend_alpha"]) for k in SMOOTH_KEYS}
+    blink_alpha = cfg["smoothing"].get("blink_alpha", cfg["smoothing"]["blend_alpha"])
+    emas = {k: Ema(blink_alpha if k.startswith("eyeBlink") else cfg["smoothing"]["blend_alpha"])
+            for k in SMOOTH_KEYS}
     head_emas = {k: Ema(cfg["smoothing"]["head_alpha"]) for k in ("yaw", "pitch", "roll")}
     hyst = {side: TriStateEye(cfg["eyes"]) for side in ("left", "right")}  # keyed by USER side
     calib = Calibration(cfg["calibration"]["frames"])
@@ -126,6 +182,8 @@ def main() -> int:
     head = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
     fps = 0.0
     t0 = t_prev = last_seen = time.monotonic()
+
+    display = TkDisplay("DrawFace Live")
 
     try:
         while True:
@@ -153,12 +211,26 @@ def main() -> int:
                     head = {k: v * (1 - decay) for k, v in head.items()}
 
             eye_states = {}  # sprite side -> 'open' | 'half' | 'closed'
+            brow_dy = {}     # sprite side -> vertical brow offset in px (up = negative)
             for user_side in ("left", "right"):
                 sprite_side = eye_key_for_user_side(user_side, mirror)
                 eye_states[sprite_side] = hyst[user_side].update(smoothed[f"eyeBlink{user_side.capitalize()}"])
+                s = user_side.capitalize()
+                raise_amt = 0.5 * smoothed["browInnerUp"] + 0.5 * smoothed[f"browOuterUp{s}"] \
+                    - smoothed[f"browDown{s}"]
+                brow_dy[sprite_side] = -int(round(max(-1.0, min(1.0, raise_amt)) * character.brow_range))
             mouth = pick_mouth(smoothed, cfg["mouth"])
+            gaze_left = (smoothed["eyeLookOutLeft"] + smoothed["eyeLookInRight"]
+                         - smoothed["eyeLookInLeft"] - smoothed["eyeLookOutRight"]) / 2
+            gaze_up = (smoothed["eyeLookUpLeft"] + smoothed["eyeLookUpRight"]
+                       - smoothed["eyeLookDownLeft"] - smoothed["eyeLookDownRight"]) / 2
+            # Closing lids inflates eyeLookDown — damp gaze while a blink is engaged
+            # so pupils don't dive right before the eye state flips to closed.
+            lid = max(smoothed["eyeBlinkLeft"], smoothed["eyeBlinkRight"])
+            damp = max(0.0, 1.0 - 2.0 * lid)
+            pupil_shift = gaze_to_shift(gaze_left * damp, gaze_up * damp, character.pupil_range, mirror)
 
-            out = character.compose(eye_states["L"], eye_states["R"], mouth)
+            out = character.render(eye_states["L"], eye_states["R"], mouth, brow_dy, pupil_shift)
             out = apply_head_transform(out, head["yaw"], head["pitch"], head["roll"], cfg["head"])
 
             dt, t_prev = time.monotonic() - t_prev, time.monotonic()
@@ -182,19 +254,18 @@ def main() -> int:
                     draw_tracking_viz(preview, obs, smoothed)
                 out = np.hstack([preview, out])
 
-            cv2.imshow("DrawFace Live", out)
-            key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27):
+            key = display.show(out)
+            if key == "quit":
                 break
-            if key == ord("c"):
+            if key == "c":
                 calib.restart()
-            if key == ord("m"):
+            if key == "m":
                 mirror = not mirror
                 log.info("mirror control: %s", mirror)
     finally:
         camera.release()
         tracker.close()
-        cv2.destroyAllWindows()
+        display.destroy()
     return 0
 
 

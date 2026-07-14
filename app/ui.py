@@ -8,9 +8,12 @@ Run: PYTHONPATH= .venv/bin/python -m app.ui
 """
 from __future__ import annotations
 
+import collections
 import os
 import subprocess
 import sys
+import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
@@ -92,8 +95,19 @@ class Panel:
         # PYTHONPATH= guards against unrelated site packages (e.g. a sourced ROS env)
         self.proc = subprocess.Popen(cmd, cwd=ROOT, env={**os.environ, "PYTHONPATH": ""},
                                      stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        self.started_at = time.monotonic()
+        self.err_tail: collections.deque[str] = collections.deque(maxlen=4)
+        # Drain stderr continuously — an unread PIPE fills up and blocks the child.
+        threading.Thread(target=self._drain, args=(self.proc,), daemon=True).start()
         self.btn.config(text="정지")
-        self.status.set("실행 중 — FPS·상태는 영상 창 좌상단 오버레이 참조")
+        self.status.set("시작 중 — 추적 모델 로딩(수 초), 곧 영상 창이 뜹니다…")
+
+    def _drain(self, proc: subprocess.Popen) -> None:
+        with open(ROOT / "outputs" / "ui_child.log", "w", encoding="utf-8") as f:
+            for line in proc.stderr:
+                self.err_tail.append(line.strip())
+                f.write(line)
+                f.flush()
 
     def stop(self) -> None:
         if self.proc:
@@ -107,17 +121,20 @@ class Panel:
         self.status.set("정지됨")
 
     def poll(self) -> None:
-        """Surface unexpected exits with the process's own error message."""
-        if self.proc and self.proc.poll() is not None:
-            code = self.proc.returncode
-            err = (self.proc.stderr.read() or "").strip().splitlines()
-            self.proc = None
-            self.btn.config(text="시작")
-            if code == 0:
-                self.status.set("종료됨 (영상 창에서 q)")
-            else:
-                tail = " / ".join(err[-2:]) if err else f"exit code {code}"
-                self.status.set(f"오류로 종료: {tail}")
+        """Surface unexpected exits (with the child's own error) and startup progress."""
+        if self.proc:
+            if self.proc.poll() is not None:
+                code = self.proc.returncode
+                err = [ln for ln in self.err_tail if ln]
+                self.proc = None
+                self.btn.config(text="시작")
+                if code == 0:
+                    self.status.set("종료됨 (영상 창에서 q)")
+                else:
+                    tail = " / ".join(err[-2:]) if err else f"exit code {code}"
+                    self.status.set(f"오류로 종료: {tail}")
+            elif time.monotonic() - self.started_at > 6:
+                self.status.set("실행 중 — 영상 창이 안 보이면 작업표시줄/다른 창 뒤를 확인. FPS는 영상 창 좌상단")
         self.root.after(500, self.poll)
 
     def close(self) -> None:

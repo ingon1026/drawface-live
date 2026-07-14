@@ -17,11 +17,12 @@ control:
 
 smoothing:
   blend_alpha: 0.45 # EMA for blendshape values (higher = snappier)
+  blink_alpha: 0.70 # faster EMA for eyeBlink channels — blinks last only a few frames
   head_alpha: 0.30  # EMA for head pose
 
 eyes:
-  close_threshold: 0.45       # calibrated blink score >= this -> eye fully closes
-  open_threshold: 0.30        # <= this -> leaves the closed state (hysteresis gap prevents flicker)
+  close_threshold: 0.38       # calibrated blink score >= this -> eye fully closes
+  open_threshold: 0.25        # <= this -> leaves the closed state (hysteresis gap prevents flicker)
   half_close_threshold: 0.20  # >= this -> half-closed (sleepy) band
   half_open_threshold: 0.12   # <= this -> back to fully open
 

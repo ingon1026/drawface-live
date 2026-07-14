@@ -69,9 +69,9 @@ class TkDisplay:
 
     def show(self, frame_bgr: np.ndarray) -> str | None:
         """Display a BGR frame; return 'quit', a pressed key, or None."""
-        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        h, w = rgb.shape[:2]
-        self._img = tk.PhotoImage(data=b"P6 %d %d 255\n" % (w, h) + rgb.tobytes())
+        h, w = frame_bgr.shape[:2]
+        # BGR->RGB via reversed view; tobytes() does the one required copy.
+        self._img = tk.PhotoImage(data=b"P6 %d %d 255\n" % (w, h) + frame_bgr[:, :, ::-1].tobytes())
         self.label.configure(image=self._img)
         try:
             self.root.update()

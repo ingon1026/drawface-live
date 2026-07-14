@@ -2,25 +2,14 @@
 // No DOM, no network — safe to unit-test in a browser or Node. Config keys are
 // camelCase to match web/js/config.js (Python used snake_case).
 
-// Same channels app/main.py smooths, in the same order.
+// The channels the web loop actually renders (eyes, visemes). The python twin
+// additionally smooths 13 brow/gaze channels for brow/pupil sprite overlays —
+// web-onboarded characters always have browRange/pupilRange 0, so those
+// channels are omitted here rather than smoothed for nothing every frame.
 export const SMOOTH_KEYS = [
   "eyeBlinkLeft", "eyeBlinkRight", "jawOpen",
   "mouthSmileLeft", "mouthSmileRight", "mouthPucker", "mouthFunnel",
-  // brow offset (5) + gaze channels (8) — used only when the character enables them.
-  "browInnerUp", "browDownLeft", "browDownRight", "browOuterUpLeft", "browOuterUpRight",
-  "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight",
-  "eyeLookUpLeft", "eyeLookUpRight", "eyeLookDownLeft", "eyeLookDownRight",
 ];
-
-// Python's round() is banker's rounding (half-to-even); gaze_to_shift used it, so
-// match it here to stay bit-for-bit faithful at exact .5 boundaries.
-function pyRound(x) {
-  const f = Math.floor(x);
-  const diff = x - f;
-  if (diff < 0.5) return f;
-  if (diff > 0.5) return f + 1;
-  return f % 2 === 0 ? f : f + 1; // exactly .5 -> nearest even
-}
 
 function median(values) {
   const s = [...values].sort((a, b) => a - b);
@@ -111,18 +100,6 @@ export function eyeKeyForUserSide(side, mirror) {
   return mirror ? same : swap;
 }
 
-// Map user-perspective gaze (each in [-1, 1]) to a pupil pixel shift [dx, dy].
-// Mirror-like: user looks THEIR left -> pupils move viewer-left (-x).
-// Vertical travel is naturally shorter than horizontal, hence the 0.6 factor.
-export function gazeToShift(gazeLeft, gazeUp, rangePx, mirror) {
-  const sign = mirror ? -1 : 1;
-  const dx = pyRound(sign * gazeLeft * rangePx);
-  const dy = pyRound(-gazeUp * rangePx * 0.6);
-  return [
-    Math.max(-rangePx, Math.min(rangePx, dx)),
-    Math.max(-rangePx, Math.min(rangePx, dy)),
-  ];
-}
 
 // Select a mouth sprite key from calibrated blendshape values. Ladder mirrors
 // app/sprite_backend.pick_mouth; cfg keys are camelCase (config.js CONFIG.mouth).

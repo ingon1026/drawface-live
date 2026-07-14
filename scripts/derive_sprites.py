@@ -18,6 +18,7 @@ import numpy as np
 
 SQUASH = 0.45       # half-eye: keep this fraction of the eye height (lid comes down)
 SMILE_AMP_FRAC = 0.10  # smile: corner lift as a fraction of mouth-content width
+FILL_DARKEN = 0.72  # viseme interior darkening (reads as mouth depth)
 
 
 def bbox_of(alpha: np.ndarray) -> tuple[int, int, int, int]:
@@ -104,7 +105,7 @@ def make_procedural_closed(manifest_path: Path, out_path: Path) -> None:
 
 def derive_mouth_set(closed_path: Path, manifest_path: Path, out_dir: Path) -> None:
     style = json.loads(manifest_path.read_text(encoding="utf-8")).get("mouthStyle", {})
-    fill = tuple(int(v * 0.72) for v in _hex_bgr(style.get("fill", "#8a3535")))  # darker interior reads as depth
+    fill = tuple(int(v * FILL_DARKEN) for v in _hex_bgr(style.get("fill", "#8a3535")))
     tongue_c = _hex_bgr(style.get("tongue", "#d97b7b"))
     teeth_c = _hex_bgr(style.get("teeth", "#ffffff"))
 

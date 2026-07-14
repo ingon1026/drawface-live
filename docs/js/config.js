@@ -17,8 +17,6 @@ export const CONFIG = {
 };
 
 export const CANVAS = 512;
-export const MOUTH_KEYS = ["closed", "A", "E", "I", "O", "U", "smile"];
-export const EYE_STATES = ["open", "half", "closed"];
 
 // Sprite derivation parameters (mirror of scripts/derive_sprites.py)
 export const DERIVE = {

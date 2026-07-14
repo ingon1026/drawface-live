@@ -1,5 +1,5 @@
 // DrawFace Live web — UI wiring and the render loop (browser twin of app/main.py).
-import { CONFIG } from "./config.js";
+import { CANVAS, CONFIG } from "./config.js";
 import { fit512, expandBoxToInk } from "./imageops.js";
 import { buildCharacter } from "./onboard.js";
 import { deriveAll } from "./derive.js";
@@ -117,8 +117,8 @@ function expandMouthPoints() {
 $("onboardCanvas").addEventListener("click", (e) => {
   if (ob.points.length >= 4) return;
   const r = e.target.getBoundingClientRect();
-  ob.points.push([Math.round((e.clientX - r.left) * 512 / r.width),
-                  Math.round((e.clientY - r.top) * 512 / r.height)]);
+  ob.points.push([Math.round((e.clientX - r.left) * CANVAS / r.width),
+                  Math.round((e.clientY - r.top) * CANVAS / r.height)]);
   if (ob.points.length === 4) {
     expandMouthPoints();
     $("onboardStatus").textContent = "입 영역을 잉크에 맞춰 자동 확장했습니다 — 빨간 사각형 확인 후 [생성]";
@@ -201,6 +201,8 @@ async function start() {
       smoothed: Object.fromEntries(SMOOTH_KEYS.map((k) => [k, 0])),
       head: { yaw: 0, pitch: 0, roll: 0 },
       lastSeen: performance.now(), fps: 0, tPrev: performance.now(),
+      outCtx: $("output").getContext("2d"),      // hoisted out of the frame loop
+      prevCtx: $("preview").getContext("2d"),
     };
     run.on = true;
     $("startBtn").textContent = "정지";
@@ -262,7 +264,7 @@ function loopBody(video, char, st) {
   const mouth = pickMouth(st.smoothed, CONFIG.mouth);
 
   const composed = composeCharacter(char, eyeStates.L, eyeStates.R, mouth);
-  drawScene($("output").getContext("2d"), composed, st.head, CONFIG.head);
+  drawScene(st.outCtx, composed, st.head, CONFIG.head);
 
   drawPreview(video, obs, st);
 
@@ -274,7 +276,7 @@ function loopBody(video, char, st) {
 }
 
 function drawPreview(video, obs, st) {
-  const ctx = $("preview").getContext("2d");
+  const ctx = st.prevCtx;
   const { width: w, height: h } = ctx.canvas;
   ctx.save();
   ctx.scale(-1, 1);                       // mirror ONLY the user-facing preview
@@ -283,7 +285,7 @@ function drawPreview(video, obs, st) {
   if (!$("vizChk").checked) return;
   if (obs?.landmarks) {
     ctx.fillStyle = "#50ff78";
-    for (const [x, y] of obs.landmarks) ctx.fillRect((1 - x) * w, y * h, 2, 2);
+    for (const lm of obs.landmarks) ctx.fillRect((1 - lm.x) * w, lm.y * h, 2, 2);
   }
   ctx.font = "11px monospace";
   VIZ_BARS.forEach(([label, key], i) => {

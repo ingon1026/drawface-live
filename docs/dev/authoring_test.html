@@ -26,11 +26,10 @@
   <pre id="manifest"></pre>
 
   <script type="module">
-    import { fit512, newCanvas } from "../js/imageops.js";
+    import { fit512, newCanvas, rad } from "../js/imageops.js";
     import { buildCharacter } from "../js/onboard.js";
     import { deriveAll } from "../js/derive.js";
 
-    const rad = (d) => (d * Math.PI) / 180;
 
     // (a) synthetic 200x200 drawing: white bg, two dark eye dots, a dark mouth arc.
     function syntheticDrawing() {

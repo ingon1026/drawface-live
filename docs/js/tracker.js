@@ -70,10 +70,9 @@ export async function createTracker() {
       const blend = {};
       for (const c of result.faceBlendshapes[0].categories) blend[c.categoryName] = c.score;
 
-      let landmarks = null;
-      if (result.faceLandmarks && result.faceLandmarks.length) {
-        landmarks = result.faceLandmarks[0].map((lm) => [lm.x, lm.y]);
-      }
+      // Raw landmark objects ({x, y, z}) — no per-frame array rebuild; consumers
+      // read .x/.y directly (only the debug overlay uses these).
+      const landmarks = result.faceLandmarks?.[0] ?? null;
 
       let yaw = 0, pitch = 0, roll = 0;
       if (result.facialTransformationMatrixes && result.facialTransformationMatrixes.length) {

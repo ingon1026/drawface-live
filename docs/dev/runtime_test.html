@@ -11,7 +11,7 @@
   <!-- Standalone: imports only DOM/pure modules (no tracker.js, no network). -->
   <script type="module">
     import {
-      Hysteresis, TriStateEye, eyeKeyForUserSide, gazeToShift, pickMouth,
+      Hysteresis, TriStateEye, eyeKeyForUserSide, pickMouth,
     } from "../js/pipeline.js";
     import { prepareCharacter, composeCharacter } from "../js/compositor.js";
 
@@ -69,15 +69,6 @@
       eq(pickMouth({ jawOpen: 0.20, mouthFunnel: 0.5 }, MOUTH_CFG), "O", "mouth O (funnel)");
     }
 
-    function testGazeMirror() {
-      eq(gazeToShift(1.0, 0.0, 8, true)[0], -8, "gaze mirror x negative");
-      eq(gazeToShift(1.0, 0.0, 8, false)[0], 8, "gaze anatomical x positive");
-      ok(gazeToShift(0.0, 1.0, 8, true)[1] < 0, "gaze up is -y");
-      ok(gazeToShift(0.0, -1.0, 8, false)[1] > 0, "gaze down is +y");
-      eq(gazeToShift(5.0, -5.0, 8, false), [8, 8], "gaze clamped to range");
-      eq(gazeToShift(0.0, 0.0, 0, true), [0, 0], "gaze zero range");
-    }
-
     function testMapping() {
       eq(eyeKeyForUserSide("left", true), "L", "mirror user-left -> L");
       eq(eyeKeyForUserSide("right", true), "R", "mirror user-right -> R");
@@ -122,7 +113,6 @@
       testTriStateBands();
       testHysteresisFlicker();
       testMouthLadder();
-      testGazeMirror();
       testMapping();
       testCompositor();
       document.title = `RUNTIME OK ${n} assertions`;

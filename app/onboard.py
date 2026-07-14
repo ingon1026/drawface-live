@@ -154,9 +154,9 @@ def derive_all(char_dir: Path) -> None:
     """
     script = str(ROOT / "scripts" / "derive_sprites.py")
     env = {**os.environ, "PYTHONPATH": ""}
-    subprocess.run([sys.executable, script, str(char_dir), "--auto-mouths", str(char_dir)],
-                   check=True, cwd=ROOT, env=env)
-    subprocess.run([sys.executable, script, str(char_dir)], check=True, cwd=ROOT, env=env)
+    for extra in (["--auto-mouths", str(char_dir)], []):
+        subprocess.run([sys.executable, script, str(char_dir), *extra],
+                       check=True, cwd=ROOT, env=env, capture_output=True, text=True)
 
 
 class ClickUI:
@@ -213,9 +213,17 @@ class ClickUI:
         mouth = (min(mx0, mx1), min(my0, my1), max(mx0, mx1), max(my0, my1))
         self.status.set("생성 중…")
         self.root.update()
-        build_character(self.img, self.out_dir, self.name,
-                        {"L": (lx, ly), "R": (rx, ry)}, self.eye_half.get(), mouth)
-        derive_all(self.out_dir)
+        try:
+            build_character(self.img, self.out_dir, self.name,
+                            {"L": (lx, ly), "R": (rx, ry)}, self.eye_half.get(), mouth)
+            derive_all(self.out_dir)
+        except subprocess.CalledProcessError as err:
+            tail = (err.stderr or "").strip().splitlines()[-1:] or [f"exit {err.returncode}"]
+            self.status.set(f"생성 실패 (파생 단계): {tail[0]}")
+            return
+        except Exception as err:  # surface instead of a console-only traceback
+            self.status.set(f"생성 실패: {err}")
+            return
         self.status.set(f"완료 — {self.out_dir.relative_to(ROOT)} 생성됨. 컨트롤 패널에서 선택하세요.")
         self.gen_btn.config(state="disabled")
 

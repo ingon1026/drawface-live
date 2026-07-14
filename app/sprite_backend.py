@@ -1,11 +1,13 @@
 """Deterministic sprite backend: blendshapes -> sprite states -> composite.
 
 Sprites are 512x512 full-canvas RGBA overlays aligned to base.png
-(assets/sprites/<char>/). Composite = base + eye_L_* + eye_R_* + mouth_*.
+(assets/sprites/<char>/). Composite = base + eye_L_* + eye_R_* + mouth_*
+(+ shifted brow/pupil overlays when the manifest enables them).
 Sprite keys 'L'/'R' mean VIEWER-left/right on the canvas.
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -78,6 +80,18 @@ class Ema:
         return self.value
 
 
+def gaze_to_shift(gaze_left: float, gaze_up: float, range_px: int, mirror: bool) -> tuple[int, int]:
+    """Map user-perspective gaze (each in [-1, 1]) to a pupil pixel shift.
+
+    Mirror-like control: user looks to THEIR left -> pupils move viewer-left (-x).
+    Vertical travel is naturally shorter than horizontal, hence the 0.6 factor.
+    """
+    sign = -1 if mirror else 1
+    dx = int(round(sign * gaze_left * range_px))
+    dy = int(round(-gaze_up * range_px * 0.6))
+    return max(-range_px, min(range_px, dx)), max(-range_px, min(range_px, dy))
+
+
 def pick_mouth(blend: dict[str, float], mouth_cfg: dict) -> str:
     """Select a mouth sprite key from calibrated blendshape values."""
     jaw = blend.get("jawOpen", 0.0)
@@ -126,11 +140,37 @@ class SpriteCharacter:
             self.mouths[k] = self._optional(d / f"mouth_{k}.png", self.mouths["closed"])
         self._cache: dict[tuple[str, str, str], np.ndarray] = {}
 
+        # Manifest-driven micro-motion overlays: brows (vertical offset) and
+        # pupils (gaze shift). Disabled when range is 0 or artwork is absent.
+        mf_path = d / "manifest.json"
+        mf = json.loads(mf_path.read_text(encoding="utf-8")) if mf_path.exists() else {}
+        self.pupil_range = int(mf.get("pupilRange", 0))
+        self.brow_range = int(mf.get("browRange", 0))
+        self.pupils = self._roi_overlays(d, "pupil") if self.pupil_range > 0 else {}
+        self.brows = self._roi_overlays(d, "brow") if self.brow_range > 0 else {}
+
     def _optional(self, path: Path, fallback: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
         if path.exists():
             return self._overlay(path)
         log.info("optional sprite not present, degrading gracefully: %s", path.name)
         return fallback
+
+    def _roi_overlays(self, d: Path, prefix: str) -> dict[str, tuple]:
+        """Load {prefix}_L/R.png cropped to content bbox for cheap shifted blits."""
+        out = {}
+        for side in ("L", "R"):
+            p = d / f"{prefix}_{side}.png"
+            if not p.exists():
+                log.info("optional sprite not present, %s motion disabled for side %s", prefix, side)
+                continue
+            img = self._load(p)
+            ys, xs = np.where(img[:, :, 3] > 0)
+            if not len(ys):
+                continue
+            crop = img[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+            a = crop[:, :, 3:4].astype(np.float32) / 255.0
+            out[side] = (crop[:, :, :3].astype(np.float32) * a, 1.0 - a, (int(xs.min()), int(ys.min())))
+        return out
 
     def _load(self, path: Path) -> np.ndarray:
         img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
@@ -161,6 +201,38 @@ class SpriteCharacter:
                 out += premul
             cached = self._cache[key] = out.astype(np.uint8)  # BGR
         return cached
+
+    def render(self, eye_l: str, eye_r: str, mouth: str,
+               brow_dy: dict[str, int], pupil_shift: tuple[int, int]) -> np.ndarray:
+        """Memoized state composite + per-frame brow/pupil overlays (if enabled)."""
+        out = self.compose(eye_l, eye_r, mouth)
+        if not self.brows and not self.pupils:
+            return out
+        out = out.copy()
+        eye_state = {"L": eye_l, "R": eye_r}
+        for side, ov in self.brows.items():
+            self._blit(out, ov, 0, brow_dy.get(side, 0))
+        for side, ov in self.pupils.items():
+            if eye_state[side] == "open":  # closed/half lids hide the pupil
+                self._blit(out, ov, *pupil_shift)
+        return out
+
+    @staticmethod
+    def _blit(out: np.ndarray, ov: tuple, dx: int, dy: int) -> None:
+        """Alpha-blend a content-cropped overlay at its home position + (dx, dy)."""
+        premul, inv_a, (x0, y0) = ov
+        h, w = premul.shape[:2]
+        big_h, big_w = out.shape[:2]
+        x, y = x0 + dx, y0 + dy
+        sx, sy = max(0, -x), max(0, -y)
+        x, y = max(0, x), max(0, y)
+        ex, ey = min(big_w, x + w - sx), min(big_h, y + h - sy)
+        if ex <= x or ey <= y:
+            return
+        p = premul[sy:sy + ey - y, sx:sx + ex - x]
+        ia = inv_a[sy:sy + ey - y, sx:sx + ex - x]
+        roi = out[y:ey, x:ex].astype(np.float32)
+        out[y:ey, x:ex] = (roi * ia + p).astype(np.uint8)
 
 
 def apply_head_transform(img: np.ndarray, yaw: float, pitch: float, roll: float, head_cfg: dict) -> np.ndarray:

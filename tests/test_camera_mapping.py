@@ -3,7 +3,13 @@ the mirrored preview must never swap semantic wink control)."""
 
 import pytest
 
-from app.sprite_backend import Hysteresis, TriStateEye, eye_key_for_user_side, pick_mouth
+from app.sprite_backend import (
+    Hysteresis,
+    TriStateEye,
+    eye_key_for_user_side,
+    gaze_to_shift,
+    pick_mouth,
+)
 
 MOUTH_CFG = {
     "jaw_closed": 0.06, "jaw_mid": 0.16, "jaw_large": 0.32,
@@ -56,6 +62,21 @@ def test_tristate_eye_bands_and_hysteresis():
     assert e.update(0.35) == "closed"   # inside the full gap: stays closed
     assert e.update(0.25) == "half"     # dropped below open_threshold (0.30) -> half band
     assert e.update(0.10) == "open"     # below half_open (0.12) -> fully open
+
+
+def test_gaze_mirror_semantics():
+    # Mirror-like: user looks to THEIR left -> pupils move viewer-left (-x).
+    assert gaze_to_shift(1.0, 0.0, 8, mirror=True)[0] == -8
+    assert gaze_to_shift(1.0, 0.0, 8, mirror=False)[0] == 8
+    # Up is -y in image coordinates, regardless of mirror.
+    assert gaze_to_shift(0.0, 1.0, 8, mirror=True)[1] < 0
+    assert gaze_to_shift(0.0, -1.0, 8, mirror=False)[1] > 0
+
+
+def test_gaze_shift_clamped_to_range():
+    dx, dy = gaze_to_shift(5.0, -5.0, 8, mirror=False)
+    assert (dx, dy) == (8, 8)
+    assert gaze_to_shift(0.0, 0.0, 0, mirror=True) == (0, 0)
 
 
 def test_mouth_selection_ladder():

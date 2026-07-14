@@ -24,6 +24,30 @@ const VIZ_BARS = [
 ];
 const CLICK_STEPS = ["왼눈 중심", "오른눈 중심", "입 좌상단", "입 우하단"];
 
+// ---------- camera list ----------
+// RealSense-class devices expose several video inputs (RGB/depth/IR) — the
+// browser's default pick can be the wrong one, so let the user choose.
+async function refreshCameras() {
+  const sel = $("camSelect");
+  const cur = sel.value;
+  sel.innerHTML = "";
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+    devs.forEach((d, i) => sel.add(new Option(d.label || `카메라 ${i + 1}`, d.deviceId)));
+    if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+    const rgb = [...sel.options].find((o) => /rgb|color/i.test(o.text));
+    if (rgb && !cur) sel.value = rgb.value;
+  } catch { /* enumerate unavailable — default device will be used */ }
+}
+navigator.mediaDevices?.addEventListener?.("devicechange", refreshCameras);
+
+const CAM_ERRORS = {
+  NotAllowedError: "카메라 권한이 차단됐습니다 — 주소창의 자물쇠/카메라 아이콘에서 '허용'으로 바꾸고 새로고침하세요",
+  NotFoundError: "카메라를 찾을 수 없습니다 — 연결 상태를 확인하세요 (WSL에 attach된 카메라는 Windows에서 보이지 않습니다)",
+  NotReadableError: "다른 프로그램이 카메라를 사용 중입니다 — 해당 앱을 닫고 다시 시도하세요",
+  OverconstrainedError: "선택한 카메라가 요청 해상도를 지원하지 않습니다 — 다른 카메라를 선택해 보세요",
+};
+
 // ---------- character list ----------
 function refreshList(selectName) {
   const sel = $("charSelect");
@@ -136,9 +160,14 @@ async function start() {
     status("추적 모델 로딩 중…");
     run.tracker ??= await createTracker();
     status("웹캠 여는 중…");
-    run.stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: CONFIG.camera.width, height: CONFIG.camera.height },
-    });
+    const video_c = { width: CONFIG.camera.width, height: CONFIG.camera.height };
+    if ($("camSelect").value) video_c.deviceId = { exact: $("camSelect").value };
+    try {
+      run.stream = await navigator.mediaDevices.getUserMedia({ video: video_c });
+    } catch (err) {
+      throw new Error(CAM_ERRORS[err.name] ?? `${err.name}: ${err.message}`);
+    }
+    refreshCameras(); // labels become visible after the first grant
     const video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
@@ -267,3 +296,4 @@ function stop() {
 $("startBtn").onclick = () => (run.on ? stop() : start());
 
 refreshList();
+refreshCameras();

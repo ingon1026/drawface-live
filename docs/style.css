@@ -1,0 +1,55 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: system-ui, "Noto Sans KR", sans-serif;
+  background: #14161a; color: #e8e8e8;
+}
+header { padding: 14px 20px 4px; }
+header h1 { margin: 0; font-size: 22px; }
+header p { margin: 4px 0 0; color: #9aa0a8; font-size: 13px; }
+
+main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; }
+
+#panel { width: 230px; display: flex; flex-direction: column; gap: 10px; }
+#panel label { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+#panel label.check { flex-direction: row; align-items: center; gap: 6px; }
+#panel select, #panel input[type="text"] { width: 100%; }
+select, input, button {
+  background: #22252b; color: #e8e8e8; border: 1px solid #3a3f47;
+  border-radius: 6px; padding: 6px 8px; font-size: 13px;
+}
+button { cursor: pointer; }
+button:hover { border-color: #5a626d; }
+button.primary { background: #2e6b46; border-color: #3b8a5a; }
+button:disabled { opacity: .45; cursor: default; }
+.row { display: flex; gap: 8px; align-items: center; }
+
+#dropZone {
+  border: 2px dashed #3a3f47; border-radius: 10px; padding: 22px 8px;
+  text-align: center; color: #9aa0a8; font-size: 13px; cursor: pointer;
+}
+#dropZone.drag { border-color: #3b8a5a; color: #cfe8d8; }
+
+#status { font-size: 12px; color: #b7bec7; min-height: 3em; white-space: pre-line; }
+
+#stage { display: flex; gap: 12px; flex-wrap: wrap; }
+#stage canvas { background: #000; border-radius: 8px; height: 512px; }
+#preview { width: 683px; }
+#output { width: 512px; }
+@media (max-width: 1450px) { #stage canvas { height: 384px; } #preview { width: 512px; } #output { width: 384px; } }
+
+dialog {
+  background: #1b1e23; color: #e8e8e8; border: 1px solid #3a3f47;
+  border-radius: 10px; padding: 16px;
+}
+dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog h2 { margin: 0 0 10px; font-size: 16px; }
+#onboardCanvas { cursor: crosshair; background: #fff; border-radius: 6px; }
+#onboardStatus { font-size: 13px; color: #9fd3b4; margin: 8px 0; min-height: 1.2em; }
+dialog .row { margin-top: 6px; justify-content: flex-end; }
+dialog .row label { font-size: 13px; display: flex; gap: 4px; align-items: center; }
+
+footer {
+  padding: 8px 20px 16px; color: #9aa0a8; font-size: 12px;
+  display: flex; gap: 16px;
+}
+footer a { color: #7fb797; }

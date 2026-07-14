@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>runtime tests</title>
+</head>
+<body>
+  <h1>DrawFace runtime unit tests</h1>
+  <pre id="result">running…</pre>
+
+  <!-- Standalone: imports only DOM/pure modules (no tracker.js, no network). -->
+  <script type="module">
+    import {
+      Hysteresis, TriStateEye, eyeKeyForUserSide, gazeToShift, pickMouth,
+    } from "../js/pipeline.js";
+    import { prepareCharacter, composeCharacter } from "../js/compositor.js";
+
+    // Match tests/test_camera_mapping.py fixtures (camelCase for the web config).
+    const EYES_CFG = {
+      closeThreshold: 0.45, openThreshold: 0.30,
+      halfCloseThreshold: 0.20, halfOpenThreshold: 0.12,
+    };
+    const MOUTH_CFG = {
+      jawClosed: 0.06, jawMid: 0.16, jawLarge: 0.32,
+      puckerThreshold: 0.40, funnelThreshold: 0.35, smileThreshold: 0.30,
+    };
+
+    let n = 0;
+    const eq = (got, want, msg) => {
+      n++;
+      const a = JSON.stringify(got), b = JSON.stringify(want);
+      if (a !== b) throw new Error(`${msg}: got ${a}, want ${b}`);
+    };
+    const ok = (cond, msg) => { n++; if (!cond) throw new Error(msg); };
+    const throws = (fn, msg) => {
+      n++;
+      try { fn(); } catch { return; }
+      throw new Error(`${msg}: expected throw`);
+    };
+
+    function testTriStateBands() {
+      const e = new TriStateEye(EYES_CFG);
+      eq(e.update(0.05), "open", "tristate start open");
+      eq(e.update(0.25), "half", "tristate crossed half_close");
+      eq(e.update(0.15), "half", "tristate inside half gap stays half");
+      eq(e.update(0.50), "closed", "tristate crossed full close");
+      eq(e.update(0.35), "closed", "tristate inside full gap stays closed");
+      eq(e.update(0.25), "half", "tristate below open_threshold -> half");
+      eq(e.update(0.10), "open", "tristate below half_open -> open");
+    }
+
+    function testHysteresisFlicker() {
+      const h = new Hysteresis(0.45, 0.30);
+      eq(h.update(0.40), false, "hyst below close stays open");
+      eq(h.update(0.50), true, "hyst crosses close");
+      eq(h.update(0.35), true, "hyst in gap stays closed");
+      eq(h.update(0.29), false, "hyst below open reopens");
+      eq(h.update(0.31), false, "hyst in gap stays open");
+    }
+
+    function testMouthLadder() {
+      eq(pickMouth({ jawOpen: 0.0 }, MOUTH_CFG), "closed", "mouth closed");
+      eq(pickMouth({ jawOpen: 0.02, mouthSmileLeft: 0.5, mouthSmileRight: 0.5 }, MOUTH_CFG), "smile", "mouth smile");
+      eq(pickMouth({ jawOpen: 0.10 }, MOUTH_CFG), "I", "mouth I");
+      eq(pickMouth({ jawOpen: 0.20 }, MOUTH_CFG), "E", "mouth E");
+      eq(pickMouth({ jawOpen: 0.40 }, MOUTH_CFG), "A", "mouth A");
+      eq(pickMouth({ jawOpen: 0.10, mouthPucker: 0.5 }, MOUTH_CFG), "U", "mouth U");
+      eq(pickMouth({ jawOpen: 0.20, mouthPucker: 0.5 }, MOUTH_CFG), "O", "mouth O (pucker)");
+      eq(pickMouth({ jawOpen: 0.20, mouthFunnel: 0.5 }, MOUTH_CFG), "O", "mouth O (funnel)");
+    }
+
+    function testGazeMirror() {
+      eq(gazeToShift(1.0, 0.0, 8, true)[0], -8, "gaze mirror x negative");
+      eq(gazeToShift(1.0, 0.0, 8, false)[0], 8, "gaze anatomical x positive");
+      ok(gazeToShift(0.0, 1.0, 8, true)[1] < 0, "gaze up is -y");
+      ok(gazeToShift(0.0, -1.0, 8, false)[1] > 0, "gaze down is +y");
+      eq(gazeToShift(5.0, -5.0, 8, false), [8, 8], "gaze clamped to range");
+      eq(gazeToShift(0.0, 0.0, 0, true), [0, 0], "gaze zero range");
+    }
+
+    function testMapping() {
+      eq(eyeKeyForUserSide("left", true), "L", "mirror user-left -> L");
+      eq(eyeKeyForUserSide("right", true), "R", "mirror user-right -> R");
+      eq(eyeKeyForUserSide("left", false), "R", "anatomical user-left -> R");
+      eq(eyeKeyForUserSide("right", false), "L", "anatomical user-right -> L");
+      for (const mirror of [true, false]) {
+        const sides = new Set([eyeKeyForUserSide("left", mirror), eyeKeyForUserSide("right", mirror)]);
+        ok(sides.size === 2 && sides.has("L") && sides.has("R"), `mapping exclusive (mirror=${mirror})`);
+      }
+      throws(() => eyeKeyForUserSide("up", true), "invalid side rejected");
+    }
+
+    function coloredCanvas(color) {
+      const c = document.createElement("canvas");
+      c.width = 512; c.height = 512;
+      const x = c.getContext("2d");
+      x.fillStyle = color; x.fillRect(0, 0, 512, 512);
+      return c;
+    }
+
+    function testCompositor() {
+      const canvases = { "base.png": coloredCanvas("#ffffff") };
+      for (const side of ["L", "R"]) {
+        canvases[`eye_${side}_open.png`] = coloredCanvas("#00ff00");
+        canvases[`eye_${side}_closed.png`] = coloredCanvas("#ff0000");
+      }
+      for (const k of ["closed", "A", "E", "I", "O", "U"]) canvases[`mouth_${k}.png`] = coloredCanvas("#0000ff");
+      // eye_*_half and mouth_smile intentionally absent -> optional fallback.
+
+      const char = prepareCharacter({ name: "t", manifest: {}, canvases });
+      ok(char.eyes.L.half === char.eyes.L.open, "half falls back to open");
+      ok(char.mouths.smile === char.mouths.closed, "smile falls back to closed");
+
+      const a = composeCharacter(char, "open", "open", "closed");
+      const b = composeCharacter(char, "open", "open", "closed");
+      ok(a === b, "compose memoized: same state -> identical object");
+      const c = composeCharacter(char, "closed", "open", "closed");
+      ok(c !== a, "compose: different state -> different object");
+    }
+
+    try {
+      testTriStateBands();
+      testHysteresisFlicker();
+      testMouthLadder();
+      testGazeMirror();
+      testMapping();
+      testCompositor();
+      document.title = `RUNTIME OK ${n} assertions`;
+      document.getElementById("result").textContent = `RUNTIME OK — ${n} assertions passed`;
+    } catch (err) {
+      document.title = `RUNTIME FAIL ${err.message}`;
+      document.getElementById("result").textContent = `RUNTIME FAIL — ${err.message}`;
+      throw err;
+    }
+  </script>
+</body>
+</html>

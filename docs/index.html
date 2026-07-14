@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DrawFace Live</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>DrawFace Live</h1>
+  <p>손그림 한 장이 웹캠 표정을 실시간으로 따라 합니다 — 모든 처리는 브라우저 안에서만 이뤄집니다.</p>
+</header>
+
+<main>
+  <aside id="panel">
+    <label>캐릭터
+      <select id="charSelect"></select>
+    </label>
+    <div class="row">
+      <button id="deleteBtn" title="선택한 캐릭터 삭제">삭제</button>
+    </div>
+
+    <div id="dropZone" tabindex="0">
+      그림을 끌어다 놓거나<br>클릭해서 선택
+      <input id="fileInput" type="file" accept="image/*" hidden>
+    </div>
+
+    <label class="check"><input id="mirrorChk" type="checkbox" checked> 미러 컨트롤</label>
+    <label class="check"><input id="vizChk" type="checkbox" checked> 추적 시각화</label>
+
+    <button id="startBtn" class="primary">시작</button>
+    <button id="calibBtn" disabled>재캘리브레이션</button>
+
+    <div id="status">캐릭터를 온보딩하거나 선택하세요</div>
+  </aside>
+
+  <section id="stage">
+    <canvas id="preview" width="640" height="480"></canvas>
+    <canvas id="output" width="512" height="512"></canvas>
+  </section>
+</main>
+
+<dialog id="onboardDlg">
+  <h2>캐릭터 온보딩</h2>
+  <canvas id="onboardCanvas" width="512" height="512"></canvas>
+  <div class="row">
+    <label>이름 <input id="charName" size="10" placeholder="my-char"></label>
+    <label>눈 반박스 <input id="eyeHalf" type="number" value="16" min="6" max="64" size="3">px</label>
+  </div>
+  <div id="onboardStatus"></div>
+  <div class="row">
+    <button id="obReset">다시 클릭</button>
+    <button id="obGenerate" class="primary" disabled>생성</button>
+    <button id="obCancel">취소</button>
+  </div>
+</dialog>
+
+<footer>
+  <span>키: <b>c</b> 재캘리브레이션 · <b>m</b> 미러 전환</span>
+  <a href="https://github.com/ingon1026/drawface-live">GitHub</a>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

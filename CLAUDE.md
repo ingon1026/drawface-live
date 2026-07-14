@@ -1,5 +1,10 @@
 # DrawFace Live — Claude Code Implementation Guide
 
+> **Project status (2026-07-10):** this guide records the original evaluation
+> plan. The FasterLivePortrait evaluation is complete and the MediaPipe sprite
+> pipeline is the selected runtime implementation; see `outputs/benchmark.md`
+> and `README.md` for the current product and run instructions.
+
 ## 1. Project goal
 
 Build a local desktop prototype that transfers the user's live webcam facial motion to a single hand-drawn character image.
@@ -51,9 +56,9 @@ Inspect the machine where Claude Code is actually running and report the detecte
 
 Use the upstream project's verified compatibility requirements when selecting Python and dependency versions. If several backends are available, benchmark or justify the selection using the detected hardware. Never infer the current machine from previous documents, conversations, repository history, or common defaults.
 
-## 4. Primary engine
+## 4. Historical evaluation engine
 
-Use [warmshao/FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait) as the primary animation engine.
+Evaluate [warmshao/FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait) as the initial animation-engine candidate.
 
 Reasons:
 

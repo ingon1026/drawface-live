@@ -16,6 +16,10 @@
 2. **시작** → 웹캠 허용 → 정면·무표정으로 잠깐 캘리브레이션
 3. 끝 — 윙크, 입 모양(아·에·이·오·우), 미소, 고개 움직임이 그림에 실시간 반영
 
+그림이 아직 없으면 **예시 캐릭터로 체험**을 눌러 바로 시작할 수 있습니다. 새 그림은
+저장 전에 기본·눈 감기·미소·입 벌리기 결과를 확인하고 위치를 다시 조정할 수 있으며,
+실행 중 **녹화 시작**을 누르면 결과 캔버스만 WebM 영상으로 저장합니다.
+
 추적·합성 전부 브라우저 안에서 실행되고, 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
 
 ```mermaid
@@ -59,8 +63,11 @@ flowchart LR
 bash scripts/setup.sh                          # venv + 모델 + 스프라이트 (idempotent)
 PYTHONPATH= .venv/bin/python -m app.ui         # 컨트롤 패널 (캐릭터·카메라 선택, 시작/정지)
 PYTHONPATH= .venv/bin/python -m app.onboard <그림> <이름>   # 4클릭 온보딩 도구
-PYTHONPATH= .venv/bin/python -m pytest tests/  # 테스트 (좌우 매핑·히스테리시스·비즈메·온보딩)
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  # 테스트 (좌우 매핑·히스테리시스·비즈메·온보딩)
 ```
+
+> ROS 등 전역 pytest 플러그인이 설치된 환경에서도 프로젝트 테스트만 실행하도록
+> `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`을 붙입니다.
 
 영상 창 키: `q` 종료 · `c` 재캘리브레이션 · `m` 미러 전환.
 임계값·게인은 전부 [`configs/app.yaml`](configs/app.yaml)에서 조정.

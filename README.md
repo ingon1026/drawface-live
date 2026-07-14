@@ -37,6 +37,12 @@ PYTHONPATH= .venv/bin/python -m app.main  # 실행
 PYTHONPATH= .venv/bin/python -m app.main --character assets/sprites/stick
 ```
 
+CLI 대신 컨트롤 패널(캐릭터·카메라 선택, 미러/프리뷰/시각화 토글, 시작·정지)로도 실행할 수 있습니다:
+
+```bash
+PYTHONPATH= .venv/bin/python -m app.ui
+```
+
 ## 표정 매핑
 
 | 입력 (blendshape) | 출력 |

@@ -99,6 +99,8 @@ def main() -> int:
     ap.add_argument("--character", default=None, help="override character sprite dir")
     ap.add_argument("--no-preview", action="store_true", help="hide the mirrored webcam preview pane")
     ap.add_argument("--no-debug-overlay", action="store_true")
+    ap.add_argument("--mirror", choices=("on", "off"), default=None,
+                    help="override control.mirror from the config")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -114,7 +116,7 @@ def main() -> int:
     tracker = FaceTracker(model_path)
     camera = LatestFrameCamera(cam_index, cfg["camera"]["width"], cfg["camera"]["height"])
 
-    mirror = bool(cfg["control"]["mirror"])
+    mirror = cfg["control"]["mirror"] if args.mirror is None else args.mirror == "on"
     emas = {k: Ema(cfg["smoothing"]["blend_alpha"]) for k in SMOOTH_KEYS}
     head_emas = {k: Ema(cfg["smoothing"]["head_alpha"]) for k in ("yaw", "pitch", "roll")}
     hyst = {side: TriStateEye(cfg["eyes"]) for side in ("left", "right")}  # keyed by USER side

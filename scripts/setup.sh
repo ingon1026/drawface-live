@@ -55,7 +55,7 @@ fi
 if "$PY" -c "import mediapipe, cv2, numpy, yaml" 2>/dev/null; then
   echo "  fallback deps already importable — skipping install"
 else
-  uv pip install --python "$PY" mediapipe opencv-python numpy pyyaml pytest
+  uv pip install --python "$PY" mediapipe opencv-python numpy pyyaml pillow pytest
 fi
 # face landmarker model
 if [ -f "$MPMODEL" ]; then

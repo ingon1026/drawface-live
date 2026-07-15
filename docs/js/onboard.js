@@ -2,7 +2,7 @@
 // coordinates into base + eye sprites and a proceduralMouth manifest. Geometry
 // matches the python exactly so a web-onboarded character equals a CLI one.
 import { CANVAS, DERIVE } from "./config.js";
-import { newCanvas, snapToInk, borderMedian, inkColor, rad } from "./imageops.js";
+import { newCanvas, snapToInk, inpaintRegion, inkColor, rad } from "./imageops.js";
 
 /** Transparent 512 canvas with the closed-eye arc stroke (PIL arc 20..160, width 4). */
 function drawClosedEye(cx, cy, eyeHalf, colorHex) {
@@ -47,16 +47,13 @@ export function buildCharacter(canvas512, name, eyes, eyeHalf, mouthBox) {
 
     canvases[`eye_${side}_closed.png`] = drawClosedEye(cx, cy, eyeHalf, inkColor(base, box));
 
-    // inpaint eye box on base (PIL rectangle is inclusive of x1,y1).
-    const [er, eg, eb] = borderMedian(base, box);
-    bctx.fillStyle = `rgb(${er},${eg},${eb})`;
-    bctx.fillRect(box[0], box[1], box[2] - box[0] + 1, box[3] - box[1] + 1);
+    // seamless erase (skin-tone fill + feathered edge) — the open sprite above
+    // already captured the original pixels, so this only affects the base.
+    inpaintRegion(base, box);
   }
 
   const line = inkColor(base, mouthBox);
-  const [mr, mg, mb] = borderMedian(base, mouthBox);
-  bctx.fillStyle = `rgb(${mr},${mg},${mb})`;
-  bctx.fillRect(mouthBox[0], mouthBox[1], mouthBox[2] - mouthBox[0] + 1, mouthBox[3] - mouthBox[1] + 1);
+  inpaintRegion(base, mouthBox);
   canvases["base.png"] = base;
 
   const mcx = Math.floor((mouthBox[0] + mouthBox[2]) / 2);

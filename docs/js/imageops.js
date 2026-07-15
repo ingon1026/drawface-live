@@ -1,4 +1,4 @@
-// Port of the pixel primitives in app/onboard.py (fit_512, _border_median,
+// Port of the pixel primitives in app/onboard.py (fit_512, inpaint_region,
 // _ink_color, snap_to_ink). Pixel work goes through ImageData typed arrays;
 // canvas API is used only for whole-image ops (drawImage scaling), never in
 // per-pixel loops. Shared low-level helpers are exported for onboard.js/derive.js.
@@ -94,21 +94,39 @@ export function snapToInk(canvas, cx, cy, r) {
   return [x0 + Math.floor(sx / n), y0 + Math.floor(sy / n)];
 }
 
-/** Port of _border_median (ring=4): median color of the ring just outside box. */
-export function borderMedian(canvas, box, ring = 4) {
-  const { data, width: w, height: h } = getData(canvas);
-  const [x0, y0, x1, y1] = box;
-  const R = [], G = [], B = [];
-  const push = (x, y) => { const i = (y * w + x) * 4; R.push(data[i]); G.push(data[i + 1]); B.push(data[i + 2]); };
-  for (let x = Math.max(0, x0 - ring); x < Math.min(w, x1 + ring); x++) {
-    for (let y = Math.max(0, y0 - ring); y < y0; y++) push(x, y);
-    for (let y = y1; y < Math.min(h, y1 + ring); y++) push(x, y);
+/** Port of inpaint_region: erase box in-place with the surrounding skin tone,
+ *  feathered over `pad` px (no hard rectangle, no dark smear). Mutates canvas. */
+export function inpaintRegion(canvas, box, pad = 6) {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const [x0, y0, x1, y1] = box.map((v) => Math.round(v));
+
+  // skin = mean of non-ink pixels in the padded box region
+  let sr = 0, sg = 0, sb = 0, n = 0, ar = 0, ag = 0, ab = 0, an = 0;
+  for (let y = Math.max(0, y0 - pad); y < Math.min(h, y1 + pad); y++) {
+    for (let x = Math.max(0, x0 - pad); x < Math.min(w, x1 + pad); x++) {
+      const i = (y * w + x) * 4;
+      ar += d[i]; ag += d[i + 1]; ab += d[i + 2]; an++;
+      if (d[i] + d[i + 1] + d[i + 2] > 300) { sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; n++; }
+    }
   }
-  for (let y = Math.max(0, y0); y < Math.min(h, y1); y++) {
-    for (let x = Math.max(0, x0 - ring); x < x0; x++) push(x, y);
-    for (let x = x1; x < Math.min(w, x1 + ring); x++) push(x, y);
+  const skin = n ? [sr / n, sg / n, sb / n] : [ar / an, ag / an, ab / an];
+
+  for (let y = Math.max(0, y0 - pad); y < Math.min(h, y1 + pad); y++) {
+    for (let x = Math.max(0, x0 - pad); x < Math.min(w, x1 + pad); x++) {
+      const dx = Math.max(x0 - x, x - (x1 - 1), 0);
+      const dy = Math.max(y0 - y, y - (y1 - 1), 0);
+      const alpha = Math.max(0, Math.min(1, 1 - Math.hypot(dx, dy) / pad));
+      if (alpha <= 0) continue;
+      const i = (y * w + x) * 4;
+      d[i] = d[i] * (1 - alpha) + skin[0] * alpha;
+      d[i + 1] = d[i + 1] * (1 - alpha) + skin[1] * alpha;
+      d[i + 2] = d[i + 2] * (1 - alpha) + skin[2] * alpha;
+    }
   }
-  return [median(R), median(G), median(B)];
+  ctx.putImageData(img, 0, 0);
 }
 
 /** Port of _ink_color: median of dark (r+g+b < 300) pixels in box, else #1a1a1a. */

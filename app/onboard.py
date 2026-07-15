@@ -43,17 +43,30 @@ def fit_512(src: Image.Image) -> Image.Image:
     return canvas
 
 
-def _border_median(img: Image.Image, box: tuple[int, int, int, int], ring: int = 4) -> tuple[int, int, int]:
-    x0, y0, x1, y1 = box
-    px = img.load()
-    samples = []
-    for x in range(max(0, x0 - ring), min(img.width, x1 + ring)):
-        for y in list(range(max(0, y0 - ring), y0)) + list(range(y1, min(img.height, y1 + ring))):
-            samples.append(px[x, y])
-    for y in range(max(0, y0), min(img.height, y1)):
-        for x in list(range(max(0, x0 - ring), x0)) + list(range(x1, min(img.width, x1 + ring))):
-            samples.append(px[x, y])
-    return tuple(int(statistics.median(c[i] for c in samples)) for i in range(3))
+def inpaint_region(img: Image.Image, box: tuple[int, int, int, int], pad: int = 6) -> None:
+    """Seamlessly erase an eye/mouth box in-place with the surrounding skin tone.
+
+    Replaces the old flat rectangle fill (the 'sticker' look). Two fixes:
+      1. Fill colour = mean of the *non-ink* border pixels, so nearby hair/outline
+         is not averaged in (the old median went grey next to dark features).
+      2. Feathered edge — the fill fades to 0 over `pad` px outside the box, so
+         there is no hard rectangle boundary on the paper texture.
+    """
+    import numpy as np
+
+    a = np.asarray(img.convert("RGB"), np.float32)
+    h, w = a.shape[:2]
+    x0, y0, x1, y1 = (int(v) for v in box)
+    ring = a[max(0, y0 - pad):y1 + pad, max(0, x0 - pad):x1 + pad].reshape(-1, 3)
+    light = ring[ring.sum(1) > 300]                      # drop ink/hair pixels
+    skin = (light if len(light) else ring).mean(axis=0)
+
+    yy, xx = np.mgrid[0:h, 0:w]
+    dx = np.clip(np.maximum(x0 - xx, xx - (x1 - 1)), 0, None)
+    dy = np.clip(np.maximum(y0 - yy, yy - (y1 - 1)), 0, None)
+    alpha = np.clip(1 - np.sqrt(dx * dx + dy * dy) / pad, 0, 1)[..., None]
+    a = a * (1 - alpha) + skin * alpha
+    img.paste(Image.fromarray(a.clip(0, 255).astype(np.uint8)))
 
 
 def _ink_color(img: Image.Image, box: tuple[int, int, int, int]) -> str:
@@ -121,7 +134,6 @@ def build_character(canvas_img: Image.Image, out_dir: Path, name: str,
         mouth_box = expand_box_to_ink(canvas_img, mouth_box)
     base = canvas_img.copy()
     out_dir.mkdir(parents=True, exist_ok=True)
-    d = ImageDraw.Draw(base)
 
     for side, (cx, cy) in eyes.items():
         box = (cx - eye_half, cy - eye_half, cx + eye_half, cy + eye_half)
@@ -133,14 +145,15 @@ def build_character(canvas_img: Image.Image, out_dir: Path, name: str,
         ImageDraw.Draw(closed).arc((cx - eye_half, cy - eye_half * 0.6, cx + eye_half, cy + eye_half),
                                    20, 160, fill=_ink_color(base, box), width=4)
         closed.save(out_dir / f"eye_{side}_closed.png")
-        d.rectangle(box, fill=_border_median(base, box))
+        inpaint_region(base, box)
 
     line = _ink_color(base, mouth_box)
-    d.rectangle(mouth_box, fill=_border_median(base, mouth_box))
+    inpaint_region(base, mouth_box)
     base.convert("RGBA").save(out_dir / "base.png")
 
-    mcx, mcy = (mouth_box[0] + mouth_box[2]) // 2, (mouth_box[1] + mouth_box[3]) // 2
-    half_w = max(12, (mouth_box[2] - mouth_box[0]) // 2)
+    # expand_box_to_ink returns numpy ints; cast so json.dumps stays happy
+    mcx, mcy = int((mouth_box[0] + mouth_box[2]) // 2), int((mouth_box[1] + mouth_box[3]) // 2)
+    half_w = int(max(12, (mouth_box[2] - mouth_box[0]) // 2))
     manifest = {
         "name": name,
         "pupilRange": 0, "browRange": 0, "jawDrop": 6,

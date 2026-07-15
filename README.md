@@ -81,10 +81,25 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  
 
 ## 왜 신경망이 아니라 스프라이트인가
 
-[FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait)(ONNX GPU, RTX 4070 Ti)를 라이브 웹캠으로 먼저 평가했습니다:
-human 모드는 손그림에서 얼굴 검출에 실패했고, animal 모드(XPose)는 구동되지만 실사 학습
-워핑 모델 특성상 선화의 머리가 심하게 변형됐습니다(~8.4 FPS). 측정치와 재현 절차는
-[`outputs/benchmark.md`](outputs/benchmark.md) — 스프라이트 방식은 그 실측 결과로 채택된 설계입니다.
+두 방식은 원리가 다릅니다. **신경망 워핑**([FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait))은
+원본 픽셀 자체를 학습된 흐름장으로 구부립니다 — 눈·입을 덧대지 않고 실제 이목구비가 변형됩니다.
+**스프라이트 오버레이**(이 프로젝트)는 원본 획은 그대로 두고 눈·입 조각만 교체합니다.
+
+같은 그림 + 같은 표정 클립으로 나란히 돌린 결과 (`scripts/sprite_video.py`로 재현):
+
+![스프라이트 vs FLP](docs/img/sprite_vs_flp.gif)
+
+FasterLivePortrait는 **실사 얼굴로 학습**돼서, 입력이 실제 얼굴에 가까워야 워핑이 의미를 가집니다:
+
+| 소스 | FLP 얼굴 검출 | 결과 |
+| --- | --- | --- |
+| 실사 얼굴 사진 | ✅ | 자연스럽게 워핑 (FLP의 강점) |
+| 손그림(돼지) | ❌ human 실패 → animal만 | 머리 전체 워핑·뭉개짐 + paste-back 사각 자국 |
+| **플랫 디지털 아바타** | **❌ human 실패** (손그림과 동일) | animal로 구동되나 얼굴 변형 |
+
+즉 매체(디지털/손그림)가 아니라 **"실사 얼굴에 얼마나 가까운가"**가 갈림점입니다 — 깔끔한 디지털
+아바타조차 얼굴 검출에 실패했습니다. 반면 스프라이트는 **어떤 그림이든 되고 화풍을 100% 보존**하며
+브라우저에서 돕니다(FLP는 Docker+GPU 필수, ~8.4 FPS). 측정치·재현 절차: [`outputs/benchmark.md`](outputs/benchmark.md).
 
 ## 프라이버시
 

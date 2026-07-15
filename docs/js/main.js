@@ -479,9 +479,11 @@ function loopBody(video, char, st, now) {
 
   st.fps = 0.9 * st.fps + 0.1 * (1000 / Math.max(1, now - st.tPrev));
   st.tPrev = now;
-  status(st.calib.active
+  // The recording cue must survive this per-frame status overwrite (spec §9).
+  const rec = run.recording ? "  ● REC" : "";
+  status((st.calib.active
     ? "캘리브레이션 중 — 정면을 보고 무표정을 유지하세요"
-    : `${st.fps.toFixed(0)} FPS · ${obs ? "face:OK" : "face:LOST"} · L:${eyeStates.L} R:${eyeStates.R} mouth:${mouth}`);
+    : `${st.fps.toFixed(0)} FPS · ${obs ? "face:OK" : "face:LOST"} · L:${eyeStates.L} R:${eyeStates.R} mouth:${mouth}`) + rec);
 }
 
 function drawPreview(video, obs, st) {

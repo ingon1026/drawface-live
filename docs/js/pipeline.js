@@ -2,25 +2,14 @@
 // No DOM, no network — safe to unit-test in a browser or Node. Config keys are
 // camelCase to match web/js/config.js (Python used snake_case).
 
-// Channels the web loop renders: eyes, visemes, and the 8 eyeLook* gaze channels
-// (used by characters with movable pupils, e.g. the example avatar). Brow
-// channels are still omitted — no character declares brow artwork on the web.
+// The channels the web loop actually renders (eyes, visemes). The python twin
+// additionally smooths 13 brow/gaze channels for brow/pupil sprite overlays —
+// web-onboarded characters always have browRange/pupilRange 0, so those
+// channels are omitted here rather than smoothed for nothing every frame.
 export const SMOOTH_KEYS = [
   "eyeBlinkLeft", "eyeBlinkRight", "jawOpen",
   "mouthSmileLeft", "mouthSmileRight", "mouthPucker", "mouthFunnel",
-  "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight",
-  "eyeLookUpLeft", "eyeLookUpRight", "eyeLookDownLeft", "eyeLookDownRight",
 ];
-
-/** Map user-perspective gaze (each in [-1,1]) to a pupil pixel shift [dx,dy].
- *  Mirror-like: user looks THEIR left -> pupils move viewer-left (-x). Port of
- *  app/sprite_backend.gaze_to_shift (vertical travel is shorter, hence 0.6). */
-export function gazeToShift(gazeLeft, gazeUp, rangePx, mirror) {
-  const sign = mirror ? -1 : 1;
-  const dx = Math.round(sign * gazeLeft * rangePx);
-  const dy = Math.round(-gazeUp * rangePx * 0.6);
-  return [Math.max(-rangePx, Math.min(rangePx, dx)), Math.max(-rangePx, Math.min(rangePx, dy))];
-}
 
 function median(values) {
   const s = [...values].sort((a, b) => a - b);

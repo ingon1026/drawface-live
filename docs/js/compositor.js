@@ -42,15 +42,7 @@ export function prepareCharacter(loaded) {
   for (const k of ["closed", "A", "E", "I", "O", "U"]) mouths[k] = req(canvases, `mouth_${k}.png`);
   mouths.smile = canvases["mouth_smile.png"] ?? mouths.closed;
 
-  // Movable pupils (gaze): the manifest may declare pupilRange + pupil geometry.
-  // The example avatar draws white eyeballs so the dark pupil can shift at runtime.
-  const mf = loaded.manifest || {};
-  const pupils = mf.pupilRange > 0 && Array.isArray(mf.pupils) ? mf.pupils : null;
-
-  return {
-    name: loaded.name, manifest: mf, base, eyes, mouths, memo: new Map(),
-    pupilRange: pupils ? mf.pupilRange : 0, pupils,
-  };
+  return { name: loaded.name, manifest: loaded.manifest, base, eyes, mouths, memo: new Map() };
 }
 
 // Memoized per-state composite (base + eye L + eye R + mouth), <=72 combinations.
@@ -87,7 +79,7 @@ function topLeftColor(canvas) {
 // translate for yaw/pitch, rotate for roll, both about the canvas center — matching
 // app/sprite_backend.apply_head_transform. BORDER_REPLICATE is approximated by
 // pre-filling with the composed top-left pixel color.
-export function drawScene(ctx, composed, head, headCfg, overlay) {
+export function drawScene(ctx, composed, head, headCfg) {
   const dx = clamp(head.yaw * headCfg.yawGainPx, -headCfg.maxShiftPx, headCfg.maxShiftPx);
   const dy = clamp(head.pitch * headCfg.pitchGainPx, -headCfg.maxShiftPx, headCfg.maxShiftPx);
   const angleDeg = clamp(head.roll * headCfg.rollGain, -headCfg.maxRollDeg, headCfg.maxRollDeg);
@@ -102,6 +94,5 @@ export function drawScene(ctx, composed, head, headCfg, overlay) {
   ctx.rotate((-angleDeg * Math.PI) / 180);
   ctx.translate(-cx, -cy);
   ctx.drawImage(composed, 0, 0);
-  if (overlay) overlay(ctx);   // pupils etc. — drawn under the same head transform
   ctx.restore();
 }

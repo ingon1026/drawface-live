@@ -6,7 +6,7 @@ import { deriveAll } from "./derive.js";
 import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js";
 import {
   SMOOTH_KEYS, Ema, TriStateEye, Calibration,
-  pickMouth, eyeKeyForUserSide, gazeToShift,
+  pickMouth, eyeKeyForUserSide,
 } from "./pipeline.js";
 import { createTracker, detectOnImage } from "./tracker.js";
 import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js";
@@ -338,10 +338,9 @@ function exampleDrawing() {
   ell(150, 96, 200, 210); ell(312, 96, 362, 210);                         // side hair
   ctx.beginPath(); ctx.roundRect(196, 205, 48, 9, 4); ctx.fill();         // brows
   ctx.beginPath(); ctx.roundRect(268, 205, 48, 9, 4); ctx.fill();
-  for (const ex of [220, 292]) {                                          // white eyeballs
-    ctx.fillStyle = "#ffffff"; ell(ex - 15, 234, ex + 15, 270);           //   (pupil is drawn
-    ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 2.5;                     //    at runtime so
-    ctx.beginPath(); ctx.ellipse(ex, 252, 15, 18, 0, 0, Math.PI * 2); ctx.stroke(); // it can track gaze)
+  for (const ex of [220, 292]) {                                          // eyes
+    ctx.fillStyle = "#2b2420"; ell(ex - 16, 232, ex + 16, 272);
+    ctx.fillStyle = "#ffffff"; ell(ex - 6, 240, ex + 6, 256);
   }
   ctx.strokeStyle = SKIN_SH; ctx.lineWidth = 4;                           // nose
   ctx.beginPath(); ctx.moveTo(256, 272); ctx.lineTo(250, 292); ctx.stroke();
@@ -355,9 +354,6 @@ $("exampleBtn").onclick = () => {
     const name = "예시 캐릭터";
     const { manifest, canvases } = buildCharacter(exampleDrawing(), name,
       { L: [220, 252], R: [292, 252] }, 20, [222, 290, 290, 332]);
-    // movable pupils: white eyeballs above get a dark pupil drawn at runtime
-    manifest.pupilRange = 6;
-    manifest.pupils = [{ cx: 220, cy: 252, r: 8 }, { cx: 292, cy: 252, r: 8 }];  // [viewer-L, viewer-R]
     deriveAll(canvases, manifest);
     saveCharacter(name, manifest, canvases);
     refreshList(name);
@@ -464,27 +460,6 @@ function loop(video, char, st) {
   schedule();
 }
 
-// Gaze: dark pupils drawn per-frame at eye-center + gaze shift (only for
-// characters that declare movable pupils, e.g. the example avatar).
-function pupilOverlay(char, st, eyeStates) {
-  if (!char.pupils) return null;
-  const s = st.smoothed;
-  const gazeLeft = (s.eyeLookOutLeft + s.eyeLookInRight - s.eyeLookInLeft - s.eyeLookOutRight) / 2;
-  const gazeUp = (s.eyeLookUpLeft + s.eyeLookUpRight - s.eyeLookDownLeft - s.eyeLookDownRight) / 2;
-  const damp = Math.max(0, 1 - 2 * Math.max(s.eyeBlinkLeft, s.eyeBlinkRight)); // lids down -> stop gaze
-  const [dx, dy] = gazeToShift(gazeLeft * damp, gazeUp * damp, char.pupilRange, st.mirror);
-  const open = [eyeStates.L === "open", eyeStates.R === "open"];            // [viewer-L, viewer-R]
-  return (ctx) => {
-    ctx.fillStyle = "#2b2420";
-    char.pupils.forEach((p, i) => {
-      if (!open[i]) return;                                                  // hidden behind a lid
-      ctx.beginPath();
-      ctx.arc(p.cx + dx, p.cy + dy, p.r, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  };
-}
-
 function loopBody(video, char, st, now) {
   const obs = run.tracker.detect(video, now);
 
@@ -514,7 +489,7 @@ function loopBody(video, char, st, now) {
   const mouth = pickMouth(st.smoothed, CONFIG.mouth);
 
   const composed = composeCharacter(char, eyeStates.L, eyeStates.R, mouth);
-  drawScene(st.outCtx, composed, st.head, CONFIG.head, pupilOverlay(char, st, eyeStates));
+  drawScene(st.outCtx, composed, st.head, CONFIG.head);
   if ($("fxChk").checked) {
     if (!st.calib.active) st.fx.update(st.smoothed, now);
     st.fx.draw(st.outCtx, now);

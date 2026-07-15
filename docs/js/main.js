@@ -310,35 +310,49 @@ dz.ondrop = (e) => {
   if (f) openOnboarding(f);
 };
 
+// Clean flat avatar — solid colours, eyes/mouth on a solid skin field so the
+// erased regions vanish. This is the ideal input shape for the sprite pipeline
+// (unlike a textured hand drawing, where the erased patch is hard to hide).
 function exampleDrawing() {
   const c = newCanvas(CANVAS, CANVAS);
   const ctx = c.getContext("2d");
-  ctx.fillStyle = "#fffaf3";
-  ctx.fillRect(0, 0, CANVAS, CANVAS);
-  ctx.fillStyle = "#f2a1ad";
-  ctx.strokeStyle = "#4d3038";
-  ctx.lineWidth = 8;
-  ctx.beginPath(); ctx.ellipse(256, 298, 160, 145, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  for (const [x, y, angle] of [[145, 172, -0.45], [367, 172, 0.45]]) {
-    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
-    ctx.beginPath(); ctx.ellipse(0, 0, 58, 42, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.restore();
+  const SKIN = "#f6c9a0", SKIN_SH = "#e8b488", HAIR = "#4a3328", SHIRT = "#4c8bc4", SHIRT_D = "#3b71a3";
+  const ell = (x0, y0, x1, y1, a0 = 0, a1 = Math.PI * 2) => {
+    ctx.beginPath();
+    ctx.ellipse((x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2, 0, a0, a1);
+    ctx.fill();
+  };
+  const rad = (deg) => (deg * Math.PI) / 180;
+
+  ctx.fillStyle = "#f2e9de"; ctx.fillRect(0, 0, CANVAS, CANVAS);           // background
+  ctx.fillStyle = SHIRT; ctx.beginPath(); ctx.roundRect(150, 360, 212, 152, 40); ctx.fill();
+  ctx.fillStyle = SHIRT_D;
+  ctx.beginPath(); ctx.moveTo(180, 360); ctx.lineTo(256, 430); ctx.lineTo(332, 360); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = SKIN_SH; ctx.fillRect(228, 320, 56, 52);                 // neck
+  ctx.fillStyle = SKIN; ell(150, 96, 362, 350);                           // head
+  ell(140, 200, 172, 250); ell(340, 200, 372, 250);                       // ears
+  ctx.fillStyle = HAIR;
+  ell(150, 70, 362, 300, rad(180), rad(360));                             // hair top
+  ctx.fillRect(150, 150, 212, 22);
+  ell(150, 96, 200, 210); ell(312, 96, 362, 210);                         // side hair
+  ctx.beginPath(); ctx.roundRect(196, 205, 48, 9, 4); ctx.fill();         // brows
+  ctx.beginPath(); ctx.roundRect(268, 205, 48, 9, 4); ctx.fill();
+  for (const ex of [220, 292]) {                                          // eyes
+    ctx.fillStyle = "#2b2420"; ell(ex - 16, 232, ex + 16, 272);
+    ctx.fillStyle = "#ffffff"; ell(ex - 6, 240, ex + 6, 256);
   }
-  ctx.fillStyle = "#f8bbc3";
-  ctx.beginPath(); ctx.ellipse(256, 315, 89, 57, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = "#4d3038";
-  for (const x of [198, 314]) { ctx.beginPath(); ctx.ellipse(x, 238, 8, 11, 0, 0, Math.PI * 2); ctx.fill(); }
-  ctx.beginPath(); ctx.ellipse(224, 312, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(288, 312, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(256, 332, 35, 0.12 * Math.PI, 0.88 * Math.PI); ctx.stroke();
+  ctx.strokeStyle = SKIN_SH; ctx.lineWidth = 4;                           // nose
+  ctx.beginPath(); ctx.moveTo(256, 272); ctx.lineTo(250, 292); ctx.stroke();
+  ctx.strokeStyle = "#b04a54"; ctx.lineWidth = 7;                         // mouth
+  ctx.beginPath(); ctx.ellipse(256, 311, 32, 19, 0, rad(15), rad(165)); ctx.stroke();
   return c;
 }
 
 $("exampleBtn").onclick = () => {
   try {
-    const name = "예시 돼지";
+    const name = "예시 캐릭터";
     const { manifest, canvases } = buildCharacter(exampleDrawing(), name,
-      { L: [198, 238], R: [314, 238] }, 18, [210, 294, 302, 352]);
+      { L: [220, 252], R: [292, 252] }, 20, [222, 290, 290, 332]);
     deriveAll(canvases, manifest);
     saveCharacter(name, manifest, canvases);
     refreshList(name);

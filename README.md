@@ -6,6 +6,10 @@
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
+![데모 — 표정을 따라 하는 캐릭터](docs/img/demo.gif)
+
+<sub>예시 캐릭터로 렌더링한 표정 시퀀스(윙크·깜빡임·입 모양·미소·고개). 웹캠을 켜면 이 동작이 내 표정을 따라 실시간으로 재생됩니다.</sub>
+
 ![표정 상태](docs/img/pig_states.png)
 
 ## ▶ 바로 체험

@@ -43,29 +43,23 @@ def fit_512(src: Image.Image) -> Image.Image:
     return canvas
 
 
-def inpaint_region(img: Image.Image, box: tuple[int, int, int, int], pad: int = 6) -> None:
-    """Seamlessly erase an eye/mouth box in-place with the surrounding skin tone.
+def inpaint_region(img: Image.Image, box: tuple[int, int, int, int], ring: int = 6) -> None:
+    """Erase an eye/mouth box in-place with the surrounding skin tone.
 
-    Replaces the old flat rectangle fill (the 'sticker' look). Two fixes:
-      1. Fill colour = mean of the *non-ink* border pixels, so nearby hair/outline
-         is not averaged in (the old median went grey next to dark features).
-      2. Feathered edge — the fill fades to 0 over `pad` px outside the box, so
-         there is no hard rectangle boundary on the paper texture.
+    Fills EXACTLY the box (the open-eye sprite covers this same box, so neutral
+    stays pixel-perfect — a feather that bled outside the box would show around
+    the sprites). Colour = mean of the *non-ink* pixels in the surrounding ring,
+    so nearby hair/outline is not averaged in (the old median went grey next to
+    dark features and read as a stuck-on patch).
     """
     import numpy as np
 
     a = np.asarray(img.convert("RGB"), np.float32)
-    h, w = a.shape[:2]
     x0, y0, x1, y1 = (int(v) for v in box)
-    ring = a[max(0, y0 - pad):y1 + pad, max(0, x0 - pad):x1 + pad].reshape(-1, 3)
-    light = ring[ring.sum(1) > 300]                      # drop ink/hair pixels
-    skin = (light if len(light) else ring).mean(axis=0)
-
-    yy, xx = np.mgrid[0:h, 0:w]
-    dx = np.clip(np.maximum(x0 - xx, xx - (x1 - 1)), 0, None)
-    dy = np.clip(np.maximum(y0 - yy, yy - (y1 - 1)), 0, None)
-    alpha = np.clip(1 - np.sqrt(dx * dx + dy * dy) / pad, 0, 1)[..., None]
-    a = a * (1 - alpha) + skin * alpha
+    around = a[max(0, y0 - ring):y1 + ring, max(0, x0 - ring):x1 + ring].reshape(-1, 3)
+    light = around[around.sum(1) > 300]                  # drop ink/hair pixels
+    skin = (light if len(light) else around).mean(axis=0)
+    a[y0:y1, x0:x1] = skin
     img.paste(Image.fromarray(a.clip(0, 255).astype(np.uint8)))
 
 

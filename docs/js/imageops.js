@@ -94,19 +94,20 @@ export function snapToInk(canvas, cx, cy, r) {
   return [x0 + Math.floor(sx / n), y0 + Math.floor(sy / n)];
 }
 
-/** Port of inpaint_region: erase box in-place with the surrounding skin tone,
- *  feathered over `pad` px (no hard rectangle, no dark smear). Mutates canvas. */
-export function inpaintRegion(canvas, box, pad = 6) {
+/** Port of inpaint_region: erase EXACTLY the box in-place with the surrounding
+ *  skin tone (mean of non-ink ring pixels). Fills only the box — the open-eye
+ *  sprite covers the same box, so neutral stays pixel-perfect. Mutates canvas. */
+export function inpaintRegion(canvas, box, ring = 6) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width, h = canvas.height;
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
   const [x0, y0, x1, y1] = box.map((v) => Math.round(v));
 
-  // skin = mean of non-ink pixels in the padded box region
+  // skin = mean of non-ink pixels in the surrounding ring
   let sr = 0, sg = 0, sb = 0, n = 0, ar = 0, ag = 0, ab = 0, an = 0;
-  for (let y = Math.max(0, y0 - pad); y < Math.min(h, y1 + pad); y++) {
-    for (let x = Math.max(0, x0 - pad); x < Math.min(w, x1 + pad); x++) {
+  for (let y = Math.max(0, y0 - ring); y < Math.min(h, y1 + ring); y++) {
+    for (let x = Math.max(0, x0 - ring); x < Math.min(w, x1 + ring); x++) {
       const i = (y * w + x) * 4;
       ar += d[i]; ag += d[i + 1]; ab += d[i + 2]; an++;
       if (d[i] + d[i + 1] + d[i + 2] > 300) { sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; n++; }
@@ -114,16 +115,10 @@ export function inpaintRegion(canvas, box, pad = 6) {
   }
   const skin = n ? [sr / n, sg / n, sb / n] : [ar / an, ag / an, ab / an];
 
-  for (let y = Math.max(0, y0 - pad); y < Math.min(h, y1 + pad); y++) {
-    for (let x = Math.max(0, x0 - pad); x < Math.min(w, x1 + pad); x++) {
-      const dx = Math.max(x0 - x, x - (x1 - 1), 0);
-      const dy = Math.max(y0 - y, y - (y1 - 1), 0);
-      const alpha = Math.max(0, Math.min(1, 1 - Math.hypot(dx, dy) / pad));
-      if (alpha <= 0) continue;
+  for (let y = Math.max(0, y0); y < Math.min(h, y1); y++) {
+    for (let x = Math.max(0, x0); x < Math.min(w, x1); x++) {
       const i = (y * w + x) * 4;
-      d[i] = d[i] * (1 - alpha) + skin[0] * alpha;
-      d[i + 1] = d[i + 1] * (1 - alpha) + skin[1] * alpha;
-      d[i + 2] = d[i + 2] * (1 - alpha) + skin[2] * alpha;
+      d[i] = skin[0]; d[i + 1] = skin[1]; d[i + 2] = skin[2];
     }
   }
   ctx.putImageData(img, 0, 0);

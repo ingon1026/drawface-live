@@ -95,7 +95,7 @@ export function snapToInk(canvas, cx, cy, r) {
 }
 
 /** Port of inpaint_region: erase EXACTLY the box in-place with the surrounding
- *  skin tone (mean of non-ink ring pixels). Fills only the box — the open-eye
+ *  skin tone (median of non-ink ring pixels). Fills only the box — the open-eye
  *  sprite covers the same box, so neutral stays pixel-perfect. Mutates canvas. */
 export function inpaintRegion(canvas, box, ring = 6) {
   const ctx = canvas.getContext("2d");
@@ -104,16 +104,17 @@ export function inpaintRegion(canvas, box, ring = 6) {
   const d = img.data;
   const [x0, y0, x1, y1] = box.map((v) => Math.round(v));
 
-  // skin = mean of non-ink pixels in the surrounding ring
-  let sr = 0, sg = 0, sb = 0, n = 0, ar = 0, ag = 0, ab = 0, an = 0;
+  // skin = median of non-ink ring pixels (median, not mean: robust to the few
+  // feature-edge pixels — e.g. lip red — that survive the ink cut)
+  const R = [], G = [], B = [], AR = [], AG = [], AB = [];
   for (let y = Math.max(0, y0 - ring); y < Math.min(h, y1 + ring); y++) {
     for (let x = Math.max(0, x0 - ring); x < Math.min(w, x1 + ring); x++) {
       const i = (y * w + x) * 4;
-      ar += d[i]; ag += d[i + 1]; ab += d[i + 2]; an++;
-      if (d[i] + d[i + 1] + d[i + 2] > 300) { sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; n++; }
+      AR.push(d[i]); AG.push(d[i + 1]); AB.push(d[i + 2]);
+      if (d[i] + d[i + 1] + d[i + 2] > 300) { R.push(d[i]); G.push(d[i + 1]); B.push(d[i + 2]); }
     }
   }
-  const skin = n ? [sr / n, sg / n, sb / n] : [ar / an, ag / an, ab / an];
+  const skin = R.length ? [median(R), median(G), median(B)] : [median(AR), median(AG), median(AB)];
 
   for (let y = Math.max(0, y0); y < Math.min(h, y1); y++) {
     for (let x = Math.max(0, x0); x < Math.min(w, x1); x++) {

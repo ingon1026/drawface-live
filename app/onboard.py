@@ -58,7 +58,9 @@ def inpaint_region(img: Image.Image, box: tuple[int, int, int, int], ring: int =
     x0, y0, x1, y1 = (int(v) for v in box)
     around = a[max(0, y0 - ring):y1 + ring, max(0, x0 - ring):x1 + ring].reshape(-1, 3)
     light = around[around.sum(1) > 300]                  # drop ink/hair pixels
-    skin = (light if len(light) else around).mean(axis=0)
+    # median, not mean: robust to the few feature-edge pixels (e.g. lip red) that
+    # survive the ink cut and would otherwise tint the fill into a faint patch
+    skin = np.median(light if len(light) else around, axis=0)
     a[y0:y1, x0:x1] = skin
     img.paste(Image.fromarray(a.clip(0, 255).astype(np.uint8)))
 

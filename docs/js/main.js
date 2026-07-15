@@ -10,6 +10,7 @@ import {
 } from "./pipeline.js";
 import { createTracker, detectOnImage } from "./tracker.js";
 import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js";
+import { StickerFx } from "./effects.js";
 
 const $ = (id) => document.getElementById(id);
 const status = (msg) => { $("status").textContent = msg; };
@@ -406,6 +407,7 @@ async function start() {
       lastSeen: performance.now(), fps: 0, tPrev: performance.now(),
       outCtx: $("output").getContext("2d"),      // hoisted out of the frame loop
       prevCtx: $("preview").getContext("2d"),
+      fx: new StickerFx(CANVAS),
     };
     run.on = true;
     $("startBtn").textContent = "정지";
@@ -488,6 +490,10 @@ function loopBody(video, char, st, now) {
 
   const composed = composeCharacter(char, eyeStates.L, eyeStates.R, mouth);
   drawScene(st.outCtx, composed, st.head, CONFIG.head);
+  if ($("fxChk").checked) {
+    if (!st.calib.active) st.fx.update(st.smoothed, now);
+    st.fx.draw(st.outCtx, now);
+  }
 
   drawPreview(video, obs, st);
 

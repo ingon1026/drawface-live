@@ -6,6 +6,10 @@
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
+![데모 — 웹캠 표정을 따라 하는 손그림 캐릭터](docs/img/demo.gif)
+
+<sub>온보딩한 캐릭터가 윙크·깜빡임·입 벌림을 실시간으로 따라 합니다. 아래는 동일 획 위에서 상태만 교체되는 예시입니다.</sub>
+
 ![표정 상태](docs/img/pig_states.png)
 
 ## ▶ 바로 체험

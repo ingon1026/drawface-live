@@ -1,7 +1,9 @@
 # 🐷 DrawFace Live
 
 **손그림 한 장이 웹캠 표정을 실시간으로 따라 합니다.**
-원본 그림의 획은 그대로 두고 눈·입 스프라이트만 교체 합성 — 화풍이 변형 없이 유지됩니다.
+엔진은 둘 — 눈·입 조각을 바꿔 끼우는 **스프라이트 오버레이**(웹, 기본)와 그림 자체를
+메시로 구부리는 **ARAP 워프**(데스크톱, 차세대). 둘 다 원본 그림에 없는 픽셀을 만들지
+않으므로 화풍이 변형 없이 유지됩니다.
 
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
@@ -65,9 +67,14 @@ flowchart LR
 
 ```bash
 bash scripts/setup.sh                          # venv + 모델 + 스프라이트 (idempotent)
-PYTHONPATH= .venv/bin/python -m app.ui         # 컨트롤 패널 (캐릭터·카메라 선택, 시작/정지)
+PYTHONPATH= .venv/bin/python -m app.ui         # 컨트롤 패널 — 스프라이트 모드 (캐릭터·카메라 선택)
 PYTHONPATH= .venv/bin/python -m app.onboard <그림> <이름>   # 4클릭 온보딩 도구
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  # 테스트 (좌우 매핑·히스테리시스·비즈메·온보딩)
+
+# ARAP 워프 모드 (아래 "ARAP 워프 모드" 참고)
+PYTHONPATH= .venv/bin/python -m app.warp_live --image <그림.png>            # 얼굴 검출되는 그림
+PYTHONPATH= .venv/bin/python -m app.warp_live --character assets/sprites/<이름>  # 4클릭 낙서 캐릭터
+
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  # 테스트
 ```
 
 > ROS 등 전역 pytest 플러그인이 설치된 환경에서도 프로젝트 테스트만 실행하도록
@@ -79,17 +86,13 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  
 
 > 카메라는 한쪽만 씁니다 — 웹앱은 Windows 카메라, 파이썬 앱은 WSL attach(`usbipd attach --wsl --busid <id>`).
 
-## 왜 신경망이 아니라 스프라이트인가
+## 왜 결정론 방식인가 — 신경망 실측 비교
 
-두 방식은 원리가 다릅니다. **신경망 워핑**([FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait))은
-원본 픽셀 자체를 학습된 흐름장으로 구부립니다 — 눈·입을 덧대지 않고 실제 이목구비가 변형됩니다.
-**스프라이트 오버레이**(이 프로젝트)는 원본 획은 그대로 두고 눈·입 조각만 교체합니다.
+"사진 한 장이면 알아서 움직여주는" 신경망 모델 두 계열을 같은 조건에서 실측한 뒤
+결정론(스프라이트·워프) 노선을 확정했습니다.
 
-같은 그림 + 같은 표정 클립으로 나란히 돌린 결과 (`scripts/sprite_video.py`로 재현):
-
-![스프라이트 vs FLP](docs/img/sprite_vs_flp.gif)
-
-FasterLivePortrait는 **실사 얼굴로 학습**돼서, 입력이 실제 얼굴에 가까워야 워핑이 의미를 가집니다:
+**① 워핑 계열 — [FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait)**
+는 실사 얼굴로 학습돼 입력이 실제 얼굴에 가까워야 동작합니다:
 
 | 소스 | FLP 얼굴 검출 | 결과 |
 | --- | --- | --- |
@@ -97,26 +100,52 @@ FasterLivePortrait는 **실사 얼굴로 학습**돼서, 입력이 실제 얼굴
 | 손그림(돼지) | ❌ human 실패 → animal만 | 머리 전체 워핑·뭉개짐 + paste-back 사각 자국 |
 | **플랫 디지털 아바타** | **❌ human 실패** (손그림과 동일) | animal로 구동되나 얼굴 변형 |
 
-즉 매체(디지털/손그림)가 아니라 **"실사 얼굴에 얼마나 가까운가"**가 갈림점입니다 — 깔끔한 디지털
-아바타조차 얼굴 검출에 실패했습니다. 반면 스프라이트는 **어떤 그림이든 되고 화풍을 100% 보존**하며
-브라우저에서 돕니다(FLP는 Docker+GPU 필수, ~8.4 FPS). 측정치·재현 절차: [`outputs/benchmark.md`](outputs/benchmark.md).
+같은 그림 + 같은 표정 클립 비교 (`scripts/sprite_video.py`로 재현):
 
-## 연구 트랙: ARAP 워프 리그 (스프라이트 후속)
+![스프라이트 vs FLP](docs/img/sprite_vs_flp.gif)
 
-스프라이트 방식의 남은 약점(패치 교체 시 "붙인 티")을 없애기 위한 다음 단계로,
-**그림 자체를 메시로 변형**하는 결정론적 워프 리그를 실험 중입니다
-([Meta AnimatedDrawings](https://github.com/facebookresearch/AnimatedDrawings)의
-ARAP 솔버 벤더링, `app/warp_rig.py`). 모든 출력 픽셀이 원본 그림에서 나오므로
-화풍이 구조적으로 보존됩니다. 연속 채널(blink_l/blink_r/smile/jaw) 합성이 가능하고,
-512² 기준 프레임당 solve+렌더 ≈ 7 ms(CPU)로 실시간 여유가 큽니다.
+**② 디퓨전 계열 — [PersonaLive](https://github.com/GVCLab/PersonaLive)** (CVPR 2026,
+실시간 스트리밍)도 실측: 일러스트가 **구동은 되지만** 출력이 모델의 학습 화풍(준실사)으로
+**재생성**됩니다 — 왕눈·선 입 같은 캐릭터 디자인이 사라지고 프레임마다 얼굴이 드리프트.
+실사 소스에서는 우수했으나(VRAM 피크 11.9GB, 4070 Ti 오프라인 ~3fps) 그림 도메인은 탈락.
+
+결론: 갈림점은 매체가 아니라 **"실사에 얼마나 가까운가"**이고, 그림 도메인에서 화풍을
+지키는 유일한 방법은 **원본 픽셀 밖을 만들지 않는 결정론 변형**입니다. 이건 업계 표준이기도
+합니다(Live2D·Adobe Character Animator·Meta Animated Drawings 전부 이 방식).
+측정치·재현 절차: [`outputs/benchmark.md`](outputs/benchmark.md).
+
+## ARAP 워프 모드 (차세대 엔진)
+
+스프라이트의 남은 약점 — 패치 교체 경계의 "붙인 티" — 를 원리적으로 없앤 두 번째 엔진.
+[Meta AnimatedDrawings](https://github.com/facebookresearch/AnimatedDrawings)의 ARAP
+솔버(MIT, 단일 파일 벤더링) 위에 메시 자동 생성과 표정 채널을 얹었습니다
+([`app/warp_rig.py`](app/warp_rig.py)). 눈·입을 지우고 붙이는 대신 **그림 자체의 획이
+움직이므로** 볼·주변부까지 자연스럽게 따라갑니다.
+
+| | 스프라이트 오버레이 | ARAP 워프 |
+| --- | --- | --- |
+| 원리 | 눈·입 조각 교체 | 제어점 이동 → 메시 변형 |
+| 표정 | 이산 상태 (open/half/closed, 비즈메) | 연속 채널 (blink L/R · smile · jaw, 0~1) |
+| 강점 | 완전 감김·입 안쪽까지 명확한 상태 표현 | 붙인 티 0, 부드러운 중간 표정 |
+| 한계 | 패치 경계 티 | 완전 감김·벌린 입 내부 불가 |
+| 지원 | 웹 + 데스크톱 | 데스크톱 (WebGL 포트 예정) |
+
+두 입력 루트가 같은 엔진으로 수렴합니다:
+
+- **얼굴이 검출되는 그림** (일러스트 등): MediaPipe 랜드마크 478점 → 메시 자동 생성 — `--image`
+- **검출 안 되는 낙서** (졸라맨·크레용): 온보딩 4클릭 박스 → 가상 랜드마크 합성 — `--character`
 
 ```bash
-PYTHONPATH=. .venv/bin/python scripts/warp_demo.py --image <그림.png> --out outputs/warp_demo
+PYTHONPATH= .venv/bin/python -m app.warp_live --image <그림.png>                 # 라이브 (웹캠)
+PYTHONPATH= .venv/bin/python -m app.warp_live --character assets/sprites/<이름>
+PYTHONPATH=. .venv/bin/python scripts/warp_demo.py --image <그림.png> --out outputs/warp_demo  # 오프라인 스틸
 ```
 
-한계(설계상): 완전 눈감김·벌린 입 내부는 순수 워프 범위 밖 — 레이어 스왑과의
-하이브리드가 다음 과제입니다. MediaPipe가 얼굴을 검출할 수 있는 그림에서만 동작합니다
-(4클릭 온보딩 캐릭터는 아직 미지원).
+512² 기준 프레임당 solve+렌더 ≈ 5~9 ms(CPU)로 실시간 여유가 큽니다. 게인은
+[`configs/app.yaml`](configs/app.yaml)의 `warp:` 섹션.
+
+로드맵: ① 하이브리드 — 완전 감김·입 내부만 워프된 획 아래에 레이어 스왑 결합
+② WebGL 포트 — 웹앱 엔진 교체.
 
 ## 프라이버시
 
@@ -129,7 +158,7 @@ PYTHONPATH=. .venv/bin/python scripts/warp_demo.py --image <그림.png> --out ou
 
 ```text
 docs/     웹앱 (GitHub Pages 루트) — 정적 파일, 빌드 없음
-app/      데스크톱 파이프라인 (config · camera · tracker · compositor · UI · onboard · warp_rig)
+app/      데스크톱 파이프라인 (config · camera · tracker · compositor · UI · onboard · warp_rig · warp_live)
 scripts/  setup · diagnose · 스프라이트 파생 · 워프 데모 · FasterLivePortrait 실행
 tests/    시맨틱 매핑 · 상태머신 · 설정 · 온보딩 · 워프 리그 검증
 third_party/FasterLivePortrait   평가용 업스트림 (서브모듈, 무수정)

@@ -52,10 +52,10 @@ else
   uv venv --python 3.12 "$VENV"
 fi
 # python deps (mediapipe import is the proxy for the whole set)
-if "$PY" -c "import mediapipe, cv2, numpy, yaml" 2>/dev/null; then
+if "$PY" -c "import mediapipe, cv2, numpy, yaml, scipy" 2>/dev/null; then
   echo "  fallback deps already importable — skipping install"
 else
-  uv pip install --python "$PY" mediapipe opencv-python numpy pyyaml pillow pytest
+  uv pip install --python "$PY" mediapipe opencv-python numpy pyyaml pillow pytest scipy
 fi
 # face landmarker model
 if [ -f "$MPMODEL" ]; then

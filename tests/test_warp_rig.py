@@ -1,0 +1,125 @@
+"""ARAP warp rig invariants: identity at rest, per-channel displacement
+direction, ARAP cheek propagation, and render locality (style preservation).
+
+Uses a synthetic landmark layout — no MediaPipe, runs headless.
+"""
+
+import numpy as np
+import pytest
+
+from app.warp_rig import (
+    CHEEKS,
+    CHIN,
+    EYE_SPAN,
+    L_EYE_TOP,
+    MOUTH_CORNERS,
+    R_EYE_TOP,
+    WarpRig,
+)
+
+
+def synthetic_landmarks(size: int = 512) -> np.ndarray:
+    """Plausible face layout; only FEATURE + EYE_SPAN indices are used by the rig."""
+    from app.warp_rig import (
+        FACE_OVAL, L_BROW, L_EYE_BOT, LIP_BOT, LIP_TOP, NOSE, R_BROW, R_EYE_BOT,
+    )
+    lm = np.zeros((478, 2), np.float32)
+
+    def ring(ids, cx, cy, rx, ry, upper):
+        n = len(ids)
+        for k, i in enumerate(ids):
+            t = (k + 1) / (n + 1) * np.pi
+            y = cy - ry * np.sin(t) if upper else cy + ry * np.sin(t)
+            lm[i] = (cx - rx * np.cos(t), y)
+
+    for k, i in enumerate(FACE_OVAL):
+        a = 2 * np.pi * k / len(FACE_OVAL)
+        lm[i] = (256 + 150 * np.sin(a), 250 - 150 * np.cos(a))
+    ring(L_EYE_TOP, 180, 220, 30, 12, upper=True)
+    ring(L_EYE_BOT, 180, 220, 30, 12, upper=False)
+    ring(R_EYE_TOP, 330, 220, 30, 12, upper=True)
+    ring(R_EYE_BOT, 330, 220, 30, 12, upper=False)
+    lm[EYE_SPAN[0]] = (148, 220)
+    lm[EYE_SPAN[1]] = (362, 220)
+    for k, i in enumerate(L_BROW):
+        lm[i] = (150 + 15 * k, 195)
+    for k, i in enumerate(R_BROW):
+        lm[i] = (300 + 15 * k, 195)
+    for k, i in enumerate(LIP_TOP):
+        lm[i] = (226 + 8 * k, 298)
+    for k, i in enumerate(LIP_BOT):
+        lm[i] = (226 + 8 * k, 306)
+    lm[MOUTH_CORNERS[0]] = (215, 302)
+    lm[MOUTH_CORNERS[1]] = (295, 302)
+    for k, i in enumerate(CHIN):
+        lm[i] = (236 + 10 * k, 364 + 2 * (k % 2))
+    for k, i in enumerate(NOSE):
+        lm[i] = (250 + 4 * k, 240 + 4 * k)
+    for (x, y), i in zip([(205, 260), (307, 260), (215, 275), (297, 275), (200, 285), (312, 285)],
+                         CHEEKS):
+        lm[i] = (x, y)
+    return lm
+
+
+@pytest.fixture(scope="module")
+def rig() -> WarpRig:
+    img = np.full((512, 512, 3), 255, np.uint8)
+    img[208:232, 150:210] = 0  # left eye
+    img[208:232, 300:360] = 0  # right eye
+    img[300:306, 215:295] = 0  # mouth stroke
+    return WarpRig(img, synthetic_landmarks())
+
+
+def vid(rig: WarpRig, lm_idx: int) -> int:
+    return rig._vid[lm_idx]
+
+
+def test_rest_is_identity(rig):
+    assert np.array_equal(rig.render(), rig._img)
+    assert np.allclose(rig.deform(), rig.verts)
+
+
+def test_blink_closes_lid_and_stays_local(rig):
+    d = rig.deform(blink_l=1.0)
+    moved = d - rig.verts
+    # center of the left upper lid comes down…
+    lid = [vid(rig, i) for i in L_EYE_TOP]
+    assert max(moved[v, 1] for v in lid) > 3.0
+    # …the right eye and the border do not move
+    other = [vid(rig, i) for i in R_EYE_TOP]
+    assert max(abs(moved[v]).max() for v in other) < 0.5
+    n_feature = len(rig._vid)
+    assert np.abs(moved[n_feature:]).max() < 0.5
+
+
+def test_blink_tapers_at_eye_corners(rig):
+    d = rig.deform(blink_l=1.0)
+    moved = d - rig.verts
+    lid = [vid(rig, i) for i in L_EYE_TOP]
+    xs = rig.verts[lid, 0]
+    center = lid[int(np.argmin(np.abs(xs - xs.mean())))]
+    corner = lid[int(np.argmax(np.abs(xs - xs.mean())))]
+    assert moved[center, 1] > moved[corner, 1]  # lids hinge at the corners
+
+
+def test_smile_propagates_into_free_cheeks(rig):
+    d = rig.deform(smile=1.0)
+    moved = d - rig.verts
+    corners = [vid(rig, i) for i in MOUTH_CORNERS]
+    assert all(moved[v, 1] < -3.0 for v in corners)  # corners up
+    cheeks = [vid(rig, i) for i in CHEEKS]
+    # cheeks are unpinned: ARAP must lift them without an explicit offset
+    assert min(moved[v, 1] for v in cheeks) < -0.5
+
+
+def test_jaw_drops_chin(rig):
+    d = rig.deform(jaw=1.0)
+    moved = d - rig.verts
+    chin = [vid(rig, i) for i in CHIN]
+    assert min(moved[v, 1] for v in chin) > 5.0
+
+
+def test_render_preserves_far_pixels(rig):
+    out = rig.render(blink_l=1.0, blink_r=1.0, smile=1.0, jaw=1.0)
+    assert np.array_equal(out[:60], rig._img[:60])          # top strip
+    assert np.array_equal(out[:, :60], rig._img[:, :60])    # left strip

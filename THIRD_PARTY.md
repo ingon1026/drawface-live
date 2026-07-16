@@ -1,5 +1,19 @@
 # Third-Party Components
 
+## AnimatedDrawings ARAP solver (warp-rig research track)
+
+| Field | Value |
+| --- | --- |
+| Upstream URL | https://github.com/facebookresearch/AnimatedDrawings |
+| Pinned commit | `b859684857519c7424da51a0b0862fbd1fd258f4` (repo archived 2025-09, HEAD frozen) |
+| File | `animated_drawings/model/arap.py` → vendored at `third_party/animated_drawings/arap.py` |
+| License | MIT, Copyright (c) Meta Platforms, Inc. (`third_party/animated_drawings/LICENSE`) |
+
+Vendored as a single file (the upstream repo is archived, so a submodule adds no update path).
+Two numpy 2.x compatibility patches, both marked with `# [vendored]` comments in the file:
+`np.bool8` → `np.bool_`, and `int()` on a size-1 array → `int(np.ravel(...)[0])`.
+Integration lives in our wrapper (`app/warp_rig.py`); the solver file is otherwise unmodified.
+
 ## FasterLivePortrait (primary animation engine)
 
 | Field | Value |

@@ -101,6 +101,23 @@ FasterLivePortrait는 **실사 얼굴로 학습**돼서, 입력이 실제 얼굴
 아바타조차 얼굴 검출에 실패했습니다. 반면 스프라이트는 **어떤 그림이든 되고 화풍을 100% 보존**하며
 브라우저에서 돕니다(FLP는 Docker+GPU 필수, ~8.4 FPS). 측정치·재현 절차: [`outputs/benchmark.md`](outputs/benchmark.md).
 
+## 연구 트랙: ARAP 워프 리그 (스프라이트 후속)
+
+스프라이트 방식의 남은 약점(패치 교체 시 "붙인 티")을 없애기 위한 다음 단계로,
+**그림 자체를 메시로 변형**하는 결정론적 워프 리그를 실험 중입니다
+([Meta AnimatedDrawings](https://github.com/facebookresearch/AnimatedDrawings)의
+ARAP 솔버 벤더링, `app/warp_rig.py`). 모든 출력 픽셀이 원본 그림에서 나오므로
+화풍이 구조적으로 보존됩니다. 연속 채널(blink_l/blink_r/smile/jaw) 합성이 가능하고,
+512² 기준 프레임당 solve+렌더 ≈ 7 ms(CPU)로 실시간 여유가 큽니다.
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/warp_demo.py --image <그림.png> --out outputs/warp_demo
+```
+
+한계(설계상): 완전 눈감김·벌린 입 내부는 순수 워프 범위 밖 — 레이어 스왑과의
+하이브리드가 다음 과제입니다. MediaPipe가 얼굴을 검출할 수 있는 그림에서만 동작합니다
+(4클릭 온보딩 캐릭터는 아직 미지원).
+
 ## 프라이버시
 
 - 웹캠 영상은 **어디로도 전송·저장되지 않습니다** (웹: 브라우저 내 처리, 데스크톱: 로컬 처리)
@@ -112,8 +129,9 @@ FasterLivePortrait는 **실사 얼굴로 학습**돼서, 입력이 실제 얼굴
 
 ```text
 docs/     웹앱 (GitHub Pages 루트) — 정적 파일, 빌드 없음
-app/      데스크톱 파이프라인 (config · camera · tracker · compositor · UI · onboard)
-scripts/  setup · diagnose · 스프라이트 파생 · FasterLivePortrait 실행
-tests/    시맨틱 매핑 · 상태머신 · 설정 · 온보딩 검증
+app/      데스크톱 파이프라인 (config · camera · tracker · compositor · UI · onboard · warp_rig)
+scripts/  setup · diagnose · 스프라이트 파생 · 워프 데모 · FasterLivePortrait 실행
+tests/    시맨틱 매핑 · 상태머신 · 설정 · 온보딩 · 워프 리그 검증
 third_party/FasterLivePortrait   평가용 업스트림 (서브모듈, 무수정)
+third_party/animated_drawings    ARAP 솔버 (MIT, 단일 파일 벤더링)
 ```

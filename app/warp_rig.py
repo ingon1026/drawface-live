@@ -52,7 +52,10 @@ class WarpRig:
     """Warp a single character image with MediaPipe-landmark control points."""
 
     def __init__(self, image_bgr: np.ndarray, landmarks_px: np.ndarray,
-                 border_steps: int = 9) -> None:
+                 border_steps: int = 9, brow_follow: bool = True) -> None:
+        # brow_follow: brows dip with a blink. Disable for synthesized (box-based)
+        # landmarks — their "brow" spots may sit on arbitrary strokes (head outline).
+        self._brow_follow = brow_follow
         self._img = image_bgr
         h, w = image_bgr.shape[:2]
         self._lm = landmarks_px[:, :2].astype(np.float32)
@@ -114,8 +117,9 @@ class WarpRig:
                 add(i, 0.0, a * taper(p[0]) * (target_y - float(p[1])))
             for i in bot:
                 add(i, 0.0, -a * taper(float(self._lm[i][0])) * 1.5 * s)
-            for i in brow:
-                add(i, 0.0, 4.0 * s * min(amt, 1.0))
+            if self._brow_follow:
+                for i in brow:
+                    add(i, 0.0, 4.0 * s * min(amt, 1.0))
 
         if smile > 0.0:
             v = min(smile, 1.0)
@@ -157,6 +161,95 @@ class WarpRig:
                smile: float = 0.0, jaw: float = 0.0) -> np.ndarray:
         new_verts = self.deform(blink_l=blink_l, blink_r=blink_r, smile=smile, jaw=jaw)
         return piecewise_affine(self._img, self.verts, new_verts, self.tris)
+
+
+def landmarks_from_boxes(eye_l_box: tuple[float, float, float, float],
+                         eye_r_box: tuple[float, float, float, float],
+                         mouth_box: tuple[float, float, float, float],
+                         size_wh: tuple[int, int]) -> np.ndarray:
+    """Synthesize the FEATURE landmark layout from onboarding geometry.
+
+    4-click characters (scribbles, stick figures) have no MediaPipe-detectable
+    face; their eye/mouth boxes are all we know. The layout only has to be
+    plausible: rings sit on the boxes, brows/nose/cheeks at face-proportional
+    spots, and the oval anchors a static frame around everything. Boxes are
+    (x1, y1, x2, y2) in pixels; eye_l is the viewer-left eye.
+    """
+    w, h = size_wh
+    lm = np.zeros((478, 2), np.float32)
+
+    def ring(ids: list[int], cx: float, cy: float, rx: float, ry: float, upper: bool) -> None:
+        n = len(ids)
+        for k, i in enumerate(ids):
+            t = (k + 1) / (n + 1) * np.pi
+            y = cy - ry * np.sin(t) if upper else cy + ry * np.sin(t)
+            lm[i] = (cx - rx * np.cos(t), y)
+
+    def box_geom(b: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+        x1, y1, x2, y2 = b
+        return ((x1 + x2) / 2, (y1 + y2) / 2, max(4.0, (x2 - x1) / 2), max(3.0, (y2 - y1) / 2))
+
+    lcx, lcy, lrx, lry = box_geom(eye_l_box)
+    rcx, rcy, rrx, rry = box_geom(eye_r_box)
+    ring(L_EYE_TOP, lcx, lcy, lrx, lry, upper=True)
+    ring(L_EYE_BOT, lcx, lcy, lrx, lry, upper=False)
+    ring(R_EYE_TOP, rcx, rcy, rrx, rry, upper=True)
+    ring(R_EYE_BOT, rcx, rcy, rrx, rry, upper=False)
+    lm[EYE_SPAN[0]] = (lcx - lrx * 1.15, lcy)
+    lm[EYE_SPAN[1]] = (rcx + rrx * 1.15, rcy)
+    for k, i in enumerate(L_BROW):
+        lm[i] = (lcx - lrx + 2 * lrx * k / (len(L_BROW) - 1), lcy - lry * 1.8)
+    for k, i in enumerate(R_BROW):
+        lm[i] = (rcx - rrx + 2 * rrx * k / (len(R_BROW) - 1), rcy - rry * 1.8)
+
+    mcx, mcy, mrx, mry = box_geom(mouth_box)
+    for k, i in enumerate(LIP_TOP):
+        lm[i] = (mcx + mrx * 0.7 * (2 * k / (len(LIP_TOP) - 1) - 1), mcy - mry * 0.3)
+    for k, i in enumerate(LIP_BOT):
+        lm[i] = (mcx + mrx * 0.7 * (2 * k / (len(LIP_BOT) - 1) - 1), mcy + mry * 0.3)
+    lm[MOUTH_CORNERS[0]] = (mcx - mrx, mcy)
+    lm[MOUTH_CORNERS[1]] = (mcx + mrx, mcy)
+
+    eyes_cy = (lcy + rcy) / 2
+    face_cx = (lcx + rcx + mcx) / 3
+    top_y = min(lcy - lry, rcy - rry)
+    chin_y = mcy + mry + max(8.0, (mcy - eyes_cy) * 0.55)
+    half_w = max(rcx + rrx - face_cx, face_cx - (lcx - lrx), mrx * 1.4) * 1.45
+    cy_mid = (top_y + chin_y) / 2
+    half_h = (chin_y - top_y) / 2 * 1.30 + mry
+    for k, i in enumerate(FACE_OVAL):
+        a = 2 * np.pi * k / len(FACE_OVAL)
+        lm[i] = (face_cx + half_w * np.sin(a), cy_mid - half_h * np.cos(a))
+    for k, i in enumerate(CHIN):  # after the oval: shared indices belong to the chin
+        t = (k - (len(CHIN) - 1) / 2) / 2.0
+        lm[i] = (mcx + t * mrx * 1.2, chin_y - abs(t) * mry * 0.5)
+    ncx, ncy = (lcx + rcx) / 2, (eyes_cy + mcy) / 2
+    for k, i in enumerate(NOSE):
+        lm[i] = (ncx + (k % 3 - 1) * 4.0, ncy + (k // 3) * 5.0 - 2.5)
+    for (px, py), i in zip((
+        ((lcx - lrx + mcx - mrx) / 2, (eyes_cy + mcy) / 2),
+        ((rcx + rrx + mcx + mrx) / 2, (eyes_cy + mcy) / 2),
+        ((lcx + mcx) / 2, (eyes_cy + 2 * mcy) / 3),
+        ((rcx + mcx) / 2, (eyes_cy + 2 * mcy) / 3),
+        (mcx - mrx * 1.3, mcy + mry * 0.4),
+        (mcx + mrx * 1.3, mcy + mry * 0.4),
+    ), CHEEKS):
+        lm[i] = (px, py)
+
+    # Clamp into the canvas and nudge exact collisions apart — duplicate points
+    # would fall out of the Delaunay triangulation and lose their pins.
+    seen: set[tuple[float, float]] = set()
+    for i in FEATURE + list(EYE_SPAN):
+        x = min(max(float(lm[i, 0]), 2.0), w - 3.0)
+        y = min(max(float(lm[i, 1]), 2.0), h - 3.0)
+        key = (round(x, 1), round(y, 1))
+        while key in seen:
+            x = min(max(x + 0.9, 2.0), w - 3.0)
+            y = min(max(y + 0.7, 2.0), h - 3.0)
+            key = (round(x, 1), round(y, 1))
+        seen.add(key)
+        lm[i] = (x, y)
+    return lm
 
 
 def piecewise_affine(src: np.ndarray, v0: np.ndarray, v1: np.ndarray,

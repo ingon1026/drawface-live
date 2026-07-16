@@ -2,15 +2,16 @@
 erase-and-paste sprites, so nothing looks glued on.
 
     PYTHONPATH=. .venv/bin/python -m app.warp_live --image assets/source/character.png
+    PYTHONPATH=. .venv/bin/python -m app.warp_live --character assets/sprites/wave
+
+--image needs a MediaPipe-detectable drawing (flattened; alpha is dropped).
+--character takes any onboarded 4-click folder: eye/mouth boxes are recovered
+from the sprite alphas and synthesized into landmarks, so scribbles work too.
 
 Offline twin (no camera, no window — verification and A/B clips):
 
     PYTHONPATH=. .venv/bin/python -m app.warp_live \
         --image <drawing.png> --driving clip.mp4 --out warp_out.mp4
-
-Needs a drawing MediaPipe can detect (same gate as scripts/warp_demo.py);
-4-click onboarding characters are not supported yet. Use a flattened image —
-alpha is dropped by cv2.imread.
 """
 from __future__ import annotations
 
@@ -22,12 +23,14 @@ import time
 import cv2
 import numpy as np
 
+from pathlib import Path
+
 from app.camera import LatestFrameCamera
 from app.config import load_config
 from app.face_tracker import FaceTracker, Observation
 from app.main import SMOOTH_KEYS, Calibration, TkDisplay, draw_tracking_viz
-from app.sprite_backend import Ema, apply_head_transform, eye_key_for_user_side
-from app.warp_rig import WarpRig
+from app.sprite_backend import Ema, SpriteCharacter, apply_head_transform, eye_key_for_user_side
+from app.warp_rig import WarpRig, landmarks_from_boxes
 
 log = logging.getLogger("warp_live")
 
@@ -62,10 +65,37 @@ def build_rig(image_path: str, tracker: FaceTracker) -> WarpRig | None:
     return WarpRig(img, obs.landmarks * np.array([w, h], np.float32))
 
 
+def rig_from_character(char_dir: str) -> WarpRig | None:
+    """Warp rig for a 4-click character: no face detection — eye/mouth boxes
+    are recovered from the onboarding sprites (full-canvas overlays whose alpha
+    bounds ARE the clicked boxes) and turned into synthetic landmarks. The warp
+    source is the neutral composite, not the inpainted base."""
+    d = Path(char_dir)
+
+    def alpha_box(name: str) -> tuple[float, float, float, float] | None:
+        img = cv2.imread(str(d / name), cv2.IMREAD_UNCHANGED)
+        if img is None or img.ndim < 3 or img.shape[2] < 4:
+            return None
+        ys, xs = np.where(img[:, :, 3] > 0)
+        if len(xs) == 0:
+            return None
+        return (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+
+    boxes = [alpha_box(n) for n in ("eye_L_open.png", "eye_R_open.png", "mouth_closed.png")]
+    if any(b is None for b in boxes):
+        return None
+    neutral = SpriteCharacter(str(d)).render("open", "open", "closed", {}, (0, 0))
+    h, w = neutral.shape[:2]
+    lm = landmarks_from_boxes(boxes[0], boxes[1], boxes[2], (w, h))
+    return WarpRig(neutral, lm, brow_follow=False)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser(description="drive a drawing with the ARAP warp rig")
-    ap.add_argument("--image", required=True, help="character drawing (flattened)")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--image", help="character drawing (flattened, MediaPipe-detectable face)")
+    src.add_argument("--character", help="onboarded character dir (4-click scribbles work here)")
     ap.add_argument("--config", default="configs/app.yaml")
     ap.add_argument("--camera", type=int, default=None, help="override camera index")
     ap.add_argument("--mirror", choices=("on", "off"), default=None)
@@ -82,11 +112,14 @@ def main() -> int:
     mirror = cfg["control"]["mirror"] if args.mirror is None else args.mirror == "on"
 
     tracker = FaceTracker(cfg["tracker"]["model"])
-    rig = build_rig(args.image, tracker)
+    if args.character:
+        rig = rig_from_character(args.character)
+        problem = f"{args.character} is missing onboarding sprites (eye_L_open/eye_R_open/mouth_closed)"
+    else:
+        rig = build_rig(args.image, tracker)
+        problem = f"{args.image} is unreadable or has no MediaPipe-detectable face (use --character for scribbles)"
     if rig is None:
-        print(f"cannot build rig from {args.image} — unreadable file or no "
-              "MediaPipe-detectable face (4-click characters are not supported yet)",
-              file=sys.stderr)
+        print(f"cannot build rig: {problem}", file=sys.stderr)
         tracker.close()
         return 1
 

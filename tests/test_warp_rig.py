@@ -123,3 +123,34 @@ def test_render_preserves_far_pixels(rig):
     out = rig.render(blink_l=1.0, blink_r=1.0, smile=1.0, jaw=1.0)
     assert np.array_equal(out[:60], rig._img[:60])          # top strip
     assert np.array_equal(out[:, :60], rig._img[:, :60])    # left strip
+
+
+# ---- 4-click bridge (synthesized landmarks from onboarding boxes) ----
+
+BOXES = ((150, 200, 210, 240), (300, 200, 360, 240), (215, 290, 295, 320))
+
+
+def test_landmarks_from_boxes_layout():
+    from app.warp_rig import FEATURE, landmarks_from_boxes
+
+    lm = landmarks_from_boxes(*BOXES, (512, 512))
+    pts = lm[FEATURE]
+    assert pts.min() >= 0 and pts.max() < 512
+    # no duplicates — a duplicated point falls out of the Delaunay triangulation
+    keys = {(round(float(x), 1), round(float(y), 1)) for x, y in lm[FEATURE + list(EYE_SPAN)]}
+    assert len(keys) == len(FEATURE) + 2
+    # eye rings sit on their boxes, mouth corners on the mouth box edges
+    assert abs(lm[L_EYE_TOP][:, 0].mean() - 180) < 12
+    assert abs(lm[MOUTH_CORNERS[0]][0] - 215) < 2 and abs(lm[MOUTH_CORNERS[1]][0] - 295) < 2
+
+
+def test_box_rig_blinks_without_touching_far_pixels():
+    from app.warp_rig import landmarks_from_boxes
+
+    img = np.full((512, 512, 3), 255, np.uint8)
+    img[215:225, 175:185] = 0  # left-eye dot
+    img[215:225, 325:335] = 0  # right-eye dot
+    rig = WarpRig(img, landmarks_from_boxes(*BOXES, (512, 512)), brow_follow=False)
+    out = rig.render(blink_l=1.0, blink_r=1.0)
+    assert not np.array_equal(out[200:240, 150:210], img[200:240, 150:210])  # eye region moved
+    assert np.array_equal(out[:100], img[:100])  # far pixels untouched (no brow follow)

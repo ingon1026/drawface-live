@@ -47,3 +47,9 @@ lost_face:
 
 calibration:
   frames: 30      # neutral-pose frames captured at startup / on 'c' key
+
+# ARAP warp mode (app.warp_live) — gain from calibrated blendshape to channel travel
+warp:
+  blink_gain: 2.0
+  smile_gain: 2.0
+  jaw_gain: 1.6

@@ -39,9 +39,33 @@ def test_thresholds_match_app_yaml():
         "holdMs": APP["lost_face"]["hold_ms"],
         "decayMs": APP["lost_face"]["decay_ms"],
         "frames": APP["calibration"]["frames"],
+        "blinkGain": APP["warp"]["blink_gain"],
+        "smileGain": APP["warp"]["smile_gain"],
+        "jawGain": APP["warp"]["jaw_gain"],
+        "headParallax": APP["warp"]["head_parallax"],
     }
     mismatches = {k: (js_number(k), v) for k, v in pairs.items() if js_number(k) != v}
     assert not mismatches, f"config.js drifted from configs/app.yaml: {mismatches}"
+
+
+def test_warp_constants_match_python():
+    """docs/js/warp.js mirrors app/warp_rig.py's tuned constants."""
+    import app.warp_rig as wr
+
+    warp_js = (ROOT / "docs" / "js" / "warp.js").read_text(encoding="utf-8")
+
+    def js_const(pattern: str) -> list[float]:
+        m = re.search(pattern, warp_js)
+        assert m, f"warp.js missing {pattern}"
+        return [float(g) for g in m.groups()]
+
+    assert js_const(r"UNIT_REF = ([\d.]+)") == [wr.UNIT_REF]
+    assert js_const(r"BLINK_MAX = ([\d.]+)") == [wr.BLINK_MAX]
+    assert js_const(r"SEAL_RAMP = \[([\d.]+), ([\d.]+)\]") == list(wr.SEAL_RAMP)
+    assert js_const(r"JAW_RAMP = \[([\d.]+), ([\d.]+)\]") == list(wr.JAW_RAMP)
+    assert js_const(r"PARALLAX_AMP = \[([\d.]+), ([\d.]+)\]") == list(wr.PARALLAX_AMP)
+    # MOUTH_FILL: python stores BGR, js stores RGB
+    assert js_const(r"MOUTH_FILL = \[(\d+), (\d+), (\d+)\]") == list(wr.MOUTH_FILL[::-1])
 
 
 def test_derive_params_match_python():

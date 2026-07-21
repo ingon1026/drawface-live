@@ -14,6 +14,7 @@ export const CONFIG = {
   head: { yawGainPx: -1.6, pitchGainPx: 1.2, rollGain: 1.0, maxShiftPx: 48, maxRollDeg: 20 },
   lostFace: { holdMs: 300, decayMs: 600 },
   calibration: { frames: 30 },
+  warp: { blinkGain: 2.0, smileGain: 2.0, jawGain: 1.6, headParallax: 1.0 },
 };
 
 export const CANVAS = 512;

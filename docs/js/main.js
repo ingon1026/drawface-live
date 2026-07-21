@@ -10,6 +10,7 @@ import {
 } from "./pipeline.js";
 import { createTracker, detectOnImage } from "./tracker.js";
 import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js";
+import { buildWarpRig, renderWarp } from "./warp.js";
 import { StickerFx } from "./effects.js";
 
 const $ = (id) => document.getElementById(id);
@@ -395,6 +396,13 @@ async function start() {
     run.video = video;
 
     const char = prepareCharacter(await loadCharacter(name));
+    try {
+      char.warp = buildWarpRig(char);
+    } catch (err) {
+      char.warp = null; // sprite path still works — warp is an upgrade, not a gate
+      console.warn("warp rig unavailable:", err);
+    }
+    $("warpChk").disabled = !char.warp;
     const st = {
       mirror: $("mirrorChk").checked,
       calib: new Calibration(CONFIG.calibration.frames),
@@ -488,8 +496,27 @@ function loopBody(video, char, st, now) {
   }
   const mouth = pickMouth(st.smoothed, CONFIG.mouth);
 
-  const composed = composeCharacter(char, eyeStates.L, eyeStates.R, mouth);
-  drawScene(st.outCtx, composed, st.head, CONFIG.head);
+  const useWarp = char.warp && $("warpChk").checked;
+  let frame;
+  if (useWarp) {
+    const g = CONFIG.warp;
+    const blink = {};
+    for (const side of ["left", "right"]) {
+      const key = side === "left" ? "eyeBlinkLeft" : "eyeBlinkRight";
+      blink[eyeKeyForUserSide(side, st.mirror)] = st.smoothed[key] * g.blinkGain;
+    }
+    frame = renderWarp(char.warp, {
+      blinkL: blink.L, blinkR: blink.R,
+      smile: ((st.smoothed.mouthSmileLeft + st.smoothed.mouthSmileRight) / 2) * g.smileGain,
+      jaw: st.smoothed.jawOpen * g.jawGain,
+      // Mesh parallax reuses the canvas-shift gains for direction/normalization.
+      yaw: (st.head.yaw * CONFIG.head.yawGainPx / CONFIG.head.maxShiftPx) * g.headParallax,
+      pitch: (st.head.pitch * CONFIG.head.pitchGainPx / CONFIG.head.maxShiftPx) * g.headParallax,
+    });
+  } else {
+    frame = composeCharacter(char, eyeStates.L, eyeStates.R, mouth);
+  }
+  drawScene(st.outCtx, frame, st.head, CONFIG.head);
   if ($("fxChk").checked) {
     if (!st.calib.active) st.fx.update(st.smoothed, now);
     st.fx.draw(st.outCtx, now);
@@ -503,7 +530,8 @@ function loopBody(video, char, st, now) {
   const rec = run.recording ? "  ● REC" : "";
   status((st.calib.active
     ? "캘리브레이션 중 — 정면을 보고 무표정을 유지하세요"
-    : `${st.fps.toFixed(0)} FPS · ${obs ? "face:OK" : "face:LOST"} · L:${eyeStates.L} R:${eyeStates.R} mouth:${mouth}`) + rec);
+    : `${st.fps.toFixed(0)} FPS · ${useWarp ? "warp" : "sprite"} · ${obs ? "face:OK" : "face:LOST"}`
+      + (useWarp ? "" : ` · L:${eyeStates.L} R:${eyeStates.R} mouth:${mouth}`)) + rec);
 }
 
 function drawPreview(video, obs, st) {

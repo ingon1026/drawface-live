@@ -14,6 +14,18 @@ Two numpy 2.x compatibility patches, both marked with `# [vendored]` comments in
 `np.bool8` → `np.bool_`, and `int()` on a size-1 array → `int(np.ravel(...)[0])`.
 Integration lives in our wrapper (`app/warp_rig.py`); the solver file is otherwise unmodified.
 
+## Delaunator (web warp-engine triangulation)
+
+| Field | Value |
+| --- | --- |
+| Upstream URL | https://github.com/mapbox/delaunator |
+| Version | 4.0.1 (dependency-free ESM build from unpkg) |
+| File | vendored at `docs/js/delaunator.js`, unmodified below the provenance header |
+| License | ISC, Copyright (c) 2021 Mapbox |
+
+Used by `docs/js/warp.js` to build the same Delaunay face mesh the desktop rig
+gets from `scipy.spatial.Delaunay`.
+
 ## FasterLivePortrait (primary animation engine)
 
 | Field | Value |

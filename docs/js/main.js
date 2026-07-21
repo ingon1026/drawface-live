@@ -8,7 +8,7 @@ import {
   SMOOTH_KEYS, OneEuro, IdleMotion, TriStateEye, Calibration,
   pickMouth, eyeKeyForUserSide,
 } from "./pipeline.js";
-import { createTracker, detectOnImage } from "./tracker.js";
+import { createTracker, createWorkerTracker, detectOnImage } from "./tracker.js";
 import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js";
 import { buildWarpRig, renderWarp } from "./warp.js";
 import { StickerFx } from "./effects.js";
@@ -377,7 +377,7 @@ $("deleteBtn").onclick = () => {
 };
 
 // ---------- live loop ----------
-const run = { on: false, stream: null, tracker: null, video: null, raf: 0, videoFrame: 0, recording: null };
+const run = { on: false, stream: null, tracker: null, workerTracker: null, video: null, raf: 0, videoFrame: 0, recording: null };
 
 async function start() {
   const name = $("charSelect").value;
@@ -385,7 +385,9 @@ async function start() {
   $("startBtn").disabled = true;
   try {
     status("추적 모델 로딩 중…");
-    run.tracker ??= await createTracker();
+    run.workerTracker = await createWorkerTracker(); // null → silent sync fallback
+    if (run.workerTracker) console.log("[tracker] worker mode");
+    else run.tracker ??= await createTracker();
     status("웹캠 여는 중…");
     const video_c = { width: CONFIG.camera.width, height: CONFIG.camera.height };
     if ($("camSelect").value) video_c.deviceId = { exact: $("camSelect").value };
@@ -420,7 +422,7 @@ async function start() {
       eyes: { left: new TriStateEye(CONFIG.eyes), right: new TriStateEye(CONFIG.eyes) },
       smoothed: Object.fromEntries(SMOOTH_KEYS.map((k) => [k, 0])),
       head: { yaw: 0, pitch: 0, roll: 0 },
-      lastSeen: performance.now(), fps: 0, tPrev: performance.now(),
+      lastSeen: performance.now(), fps: 0, tPrev: performance.now(), workerTs: -1,
       outCtx: $("output").getContext("2d"),      // hoisted out of the frame loop
       prevCtx: $("preview").getContext("2d"),
       fx: new StickerFx(CANVAS),
@@ -477,16 +479,25 @@ function loop(video, char, st) {
   schedule();
 }
 
-function loopBody(video, char, st, now) {
-  const obs = run.tracker.detect(video, now);
+// Worker-mode observation: send the current frame (dropped if the worker is
+// busy) and integrate the newest result. Results repeat across render frames
+// until the worker posts a fresher one, so each is integrated exactly once,
+// keyed by its capture timestamp; smoothing uses that capture ts while
+// lost-face decay is keyed on when the last non-null obs ARRIVED.
+function workerObserve(video, st, now) {
+  run.workerTracker.sendFrame(video, now);
+  const res = run.workerTracker.latest();
+  const obs = res?.obs ?? null;
+  const fresh = !!res && res.ts !== st.workerTs;
+  if (fresh) st.workerTs = res.ts;
 
-  if (obs) {
+  if (fresh && obs) {
     st.lastSeen = now;
     if (st.calib.active) {
       st.calib.feed(obs.blend);
     } else {
       const values = st.calib.apply(obs.blend);
-      const tSec = now / 1000;
+      const tSec = (res.ts ?? now) / 1000;
       for (const k of SMOOTH_KEYS) st.smoothed[k] = st.emas[k].update(values[k], tSec);
       for (const k of ["yaw", "pitch", "roll"]) st.head[k] = st.headEmas[k].update(obs[k], tSec);
     }
@@ -496,6 +507,35 @@ function loopBody(video, char, st, now) {
       const decay = Math.min(1, (lost - CONFIG.lostFace.holdMs) / CONFIG.lostFace.decayMs);
       for (const k of SMOOTH_KEYS) st.smoothed[k] *= (1 - decay);
       for (const k of ["yaw", "pitch", "roll"]) st.head[k] *= (1 - decay);
+    }
+  }
+  return obs;
+}
+
+function loopBody(video, char, st, now) {
+  let obs;
+  if (run.workerTracker) {
+    obs = workerObserve(video, st, now);
+  } else {
+    obs = run.tracker.detect(video, now);
+
+    if (obs) {
+      st.lastSeen = now;
+      if (st.calib.active) {
+        st.calib.feed(obs.blend);
+      } else {
+        const values = st.calib.apply(obs.blend);
+        const tSec = now / 1000;
+        for (const k of SMOOTH_KEYS) st.smoothed[k] = st.emas[k].update(values[k], tSec);
+        for (const k of ["yaw", "pitch", "roll"]) st.head[k] = st.headEmas[k].update(obs[k], tSec);
+      }
+    } else {
+      const lost = now - st.lastSeen;
+      if (lost > CONFIG.lostFace.holdMs) {
+        const decay = Math.min(1, (lost - CONFIG.lostFace.holdMs) / CONFIG.lostFace.decayMs);
+        for (const k of SMOOTH_KEYS) st.smoothed[k] *= (1 - decay);
+        for (const k of ["yaw", "pitch", "roll"]) st.head[k] *= (1 - decay);
+      }
     }
   }
 
@@ -545,7 +585,7 @@ function loopBody(video, char, st, now) {
   const rec = run.recording ? "  ● REC" : "";
   status((st.calib.active
     ? "캘리브레이션 중 — 정면을 보고 무표정을 유지하세요"
-    : `${st.fps.toFixed(0)} FPS · ${useWarp ? "warp" : "sprite"} · ${obs ? "face:OK" : "face:LOST"}`
+    : `${st.fps.toFixed(0)} FPS${run.workerTracker ? " · worker" : ""} · ${useWarp ? "warp" : "sprite"} · ${obs ? "face:OK" : "face:LOST"}`
       + (useWarp ? "" : ` · L:${eyeStates.L} R:${eyeStates.R} mouth:${mouth}`)) + rec);
 }
 
@@ -579,6 +619,8 @@ function stop() {
   if (run.videoFrame && run.video?.cancelVideoFrameCallback) run.video.cancelVideoFrameCallback(run.videoFrame);
   run.videoFrame = 0;
   stopRecording();
+  run.workerTracker?.close();
+  run.workerTracker = null;
   run.stream?.getTracks().forEach((t) => t.stop());
   run.stream = null;
   run.video = null;

@@ -1,36 +1,11 @@
 // MediaPipe Face Landmarker wrapper (browser only) — the web counterpart of
 // app/face_tracker.py. Loads @mediapipe/tasks-vision from CDN; detect() returns
 // blendshapes + head euler angles + normalized landmarks, or null when no face.
-import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17";
+import { CDN_URL, WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js";
 
-const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm";
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
-
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const DEG = 180 / Math.PI;
-
-// Decompose a 4x4 face transform (flat 16) into yaw/pitch/roll degrees, matching
-// app/face_tracker.py's atan2/asin on the 3x3 rotation block.
-//
-// tasks-vision docs are ambiguous on row- vs column-major, so detect the layout
-// at runtime: the homogeneous translation column/row is the tell. Row-major stores
-// translation at indices 3,7,11 (indices 12,13,14 == 0); column-major stores it at
-// 12,13,14 (indices 3,7,11 == 0). The face's camera-space translation (esp. tz) is
-// always substantially non-zero, so whichever triple has the larger magnitude marks
-// the layout. Getting this wrong would transpose the rotation and flip every angle.
-function eulerFromMatrix(data) {
-  const colMajorT = Math.abs(data[12]) + Math.abs(data[13]) + Math.abs(data[14]);
-  const rowMajorT = Math.abs(data[3]) + Math.abs(data[7]) + Math.abs(data[11]);
-  const colMajor = colMajorT >= rowMajorT;
-  // r(row, col) of the rotation block, layout-correct either way.
-  const r = colMajor ? (row, col) => data[col * 4 + row] : (row, col) => data[row * 4 + col];
-  return {
-    yaw: Math.atan2(r(0, 2), r(2, 2)) * DEG,
-    pitch: Math.asin(clamp(-r(1, 2), -1, 1)) * DEG,
-    roll: Math.atan2(r(1, 0), r(0, 0)) * DEG,
-  };
-}
+// Top-level await keeps CDN_URL the single source of truth (trackconfig.js);
+// failure semantics match the previous static import — the module fails to load.
+const { FaceLandmarker, FilesetResolver } = await import(CDN_URL);
 
 export async function createTracker() {
   let vision;
@@ -84,6 +59,68 @@ export async function createTracker() {
       landmarker.close();
     },
   };
+}
+
+// Worker init that neither succeeds nor fails (rare CDN stall) must not wedge
+// start() forever; past this we fall back to the sync tracker.
+const WORKER_INIT_TIMEOUT_MS = 15000;
+
+/** Off-main-thread tracker: {sendFrame(video, tsMs), latest() → {obs, ts}|null, close()}.
+ *  Latest-wins — sendFrame drops the frame while the worker is busy, so there is
+ *  no queue growth. Resolves null when workers/bitmaps are unsupported or the
+ *  worker fails to initialize (CDN imports can fail inside workers on some
+ *  setups); callers then fall back to the sync createTracker() path. */
+export function createWorkerTracker() {
+  if (typeof Worker === "undefined" || typeof createImageBitmap === "undefined"
+      || typeof OffscreenCanvas === "undefined") {
+    return Promise.resolve(null);
+  }
+  let worker;
+  try {
+    worker = new Worker(new URL("./trackworker.js", import.meta.url), { type: "module" });
+  } catch {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let last = null;
+    let busy = false;
+    const api = {
+      sendFrame(videoEl, tsMs) {
+        if (busy || !videoEl.videoWidth) return; // latest-wins: drop while busy
+        busy = true;
+        createImageBitmap(videoEl).then(
+          (bitmap) => worker.postMessage({ type: "frame", bitmap, ts: tsMs }, [bitmap]),
+          () => { busy = false; },
+        );
+      },
+      latest() {
+        return last;
+      },
+      close() {
+        worker.terminate();
+      },
+    };
+    const fail = () => {
+      worker.terminate();
+      resolve(null);
+    };
+    const timer = setTimeout(fail, WORKER_INIT_TIMEOUT_MS);
+    worker.onerror = fail; // module-load failure never posts "fail" — only onerror fires
+    worker.onmessage = (ev) => {
+      const msg = ev.data;
+      if (msg.type === "result") {
+        busy = false;
+        last = { obs: msg.obs, ts: msg.ts };
+      } else if (msg.type === "ready") {
+        clearTimeout(timer);
+        worker.onerror = null;
+        resolve(api);
+      } else if (msg.type === "fail") {
+        clearTimeout(timer);
+        fail();
+      }
+    };
+  });
 }
 
 // Face-mesh corner indices (MediaPipe topology): two eyes and the mouth ring.

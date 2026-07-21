@@ -53,3 +53,4 @@ warp:
   blink_gain: 2.0
   smile_gain: 2.0
   jaw_gain: 1.6
+  head_parallax: 1.0  # mesh parallax strength on top of canvas shift (0 = off)

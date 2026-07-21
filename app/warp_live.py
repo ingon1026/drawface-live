@@ -143,7 +143,13 @@ def main() -> int:
                 smoothed = {k: emas[k].update(v) for k, v in values.items()}
                 head = {k: head_emas[k].update(getattr(obs, k)) for k in head_emas}
         ch = channels(smoothed, mirror, gains)
-        out = rig.render(**ch)
+        # Mesh parallax reuses the canvas-shift gains for direction/normalization,
+        # so nose/features lead the whole-canvas motion (2.5D turn).
+        hc = cfg["head"]
+        par = gains.get("head_parallax", 1.0)
+        out = rig.render(**ch,
+                         yaw=head["yaw"] * hc["yaw_gain_px"] / hc["max_shift_px"] * par,
+                         pitch=head["pitch"] * hc["pitch_gain_px"] / hc["max_shift_px"] * par)
         out = apply_head_transform(out, head["yaw"], head["pitch"], head["roll"], cfg["head"])
         if not args.no_debug_overlay:
             face = "face:OK" if obs is not None else "face:LOST"

@@ -29,6 +29,8 @@ STATES = [
     ("smile", {"smile": 1.0}),
     ("jaw_open", {"jaw": 1.0}),
     ("smile_jaw", {"smile": 1.0, "jaw": 0.6}),
+    ("head_yaw", {"yaw": 0.8}),
+    ("yaw_smile", {"yaw": 0.6, "smile": 1.0}),
 ]
 
 

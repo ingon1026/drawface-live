@@ -112,6 +112,19 @@ def test_smile_propagates_into_free_cheeks(rig):
     assert min(moved[v, 1] for v in cheeks) < -0.5
 
 
+def test_parallax_nose_leads_silhouette(rig):
+    from app.warp_rig import FACE_OVAL, NOSE
+
+    moved = rig.deform(yaw=1.0) - rig.verts
+    nose_dx = float(np.mean([moved[vid(rig, i), 0] for i in NOSE]))
+    oval_only = [i for i in FACE_OVAL if i not in set(CHIN)]
+    oval_dx = float(np.mean([moved[vid(rig, i), 0] for i in oval_only]))
+    assert nose_dx > 5.0                    # nose leads the turn
+    assert nose_dx > oval_dx * 3            # silhouette barely follows
+    n_feature = len(rig._vid)
+    assert np.abs(moved[n_feature:]).max() < 0.5  # border pinned
+
+
 def test_jaw_drops_chin(rig):
     d = rig.deform(jaw=1.0)
     moved = d - rig.verts

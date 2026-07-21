@@ -56,6 +56,23 @@ def _smoothstep(v: float, a: float, b: float) -> float:
     return t * t * (3.0 - 2.0 * t)
 
 
+# 2.5D parallax depth per feature: how strongly it follows head yaw/pitch ON TOP
+# of the whole-canvas shift (nose leads, silhouette barely moves — Live2D style).
+# Cheeks are unpinned, ARAP interpolates them.
+PARALLAX_DEPTH: dict[int, float] = {}
+for _i in LIP_TOP + LIP_BOT + MOUTH_CORNERS:
+    PARALLAX_DEPTH[_i] = 0.75
+for _i in CHIN:
+    PARALLAX_DEPTH[_i] = 0.6
+for _i in (L_EYE_TOP + L_EYE_BOT + R_EYE_TOP + R_EYE_BOT + L_BROW + R_BROW):
+    PARALLAX_DEPTH[_i] = 0.65
+for _i in NOSE:
+    PARALLAX_DEPTH[_i] = 1.0
+for _i in FACE_OVAL:
+    PARALLAX_DEPTH.setdefault(_i, 0.15)  # CHIN-shared vertices keep the chin depth
+PARALLAX_AMP = (10.0, 7.0)  # max extra px (x, y) at scale 1 for depth-1.0 features
+
+
 class WarpRig:
     """Warp a single character image with MediaPipe-landmark control points."""
 
@@ -133,8 +150,9 @@ class WarpRig:
         self._mouth_ink = ink(patch(x1, y1 - 2, x2, y2 + 2))
 
     def deform(self, blink_l: float = 0.0, blink_r: float = 0.0,
-               smile: float = 0.0, jaw: float = 0.0) -> np.ndarray:
-        """Channel values 0..1 → new vertex positions (additive composition)."""
+               smile: float = 0.0, jaw: float = 0.0,
+               yaw: float = 0.0, pitch: float = 0.0) -> np.ndarray:
+        """Expression channels 0..1, head yaw/pitch -1..1 → new vertex positions."""
         s = self._scale
         delta: dict[int, np.ndarray] = {}
 
@@ -198,6 +216,12 @@ class WarpRig:
             for i in MOUTH_CORNERS:
                 add(i, 0.0, 4.0 * s * v)
 
+        if abs(yaw) > 1e-3 or abs(pitch) > 1e-3:
+            yv = float(np.clip(yaw, -1.0, 1.0))
+            pv = float(np.clip(pitch, -1.0, 1.0))
+            for i, depth in PARALLAX_DEPTH.items():
+                add(i, PARALLAX_AMP[0] * s * yv * depth, PARALLAX_AMP[1] * s * pv * depth)
+
         if not delta:
             return self.verts.copy()
         pins = self._pins0.copy()
@@ -206,8 +230,10 @@ class WarpRig:
         return self._arap.solve(pins).astype(np.float32)
 
     def render(self, blink_l: float = 0.0, blink_r: float = 0.0,
-               smile: float = 0.0, jaw: float = 0.0) -> np.ndarray:
-        new_verts = self.deform(blink_l=blink_l, blink_r=blink_r, smile=smile, jaw=jaw)
+               smile: float = 0.0, jaw: float = 0.0,
+               yaw: float = 0.0, pitch: float = 0.0) -> np.ndarray:
+        new_verts = self.deform(blink_l=blink_l, blink_r=blink_r, smile=smile, jaw=jaw,
+                                yaw=yaw, pitch=pitch)
         out = piecewise_affine(self._img, self.verts, new_verts, self.tris)
         # Hybrid layers: pure warp can't fully close an eye or show a mouth
         # interior, so those are painted as polygons that FOLLOW the warped mesh

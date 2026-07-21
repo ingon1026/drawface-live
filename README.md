@@ -86,6 +86,19 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  
 
 > 카메라는 한쪽만 씁니다 — 웹앱은 Windows 카메라, 파이썬 앱은 WSL attach(`usbipd attach --wsl --busid <id>`).
 
+### 카메라가 안 잡힐 때 (`/dev/video*` 없음)
+
+**attach는 Windows 재부팅마다 풀립니다.** 커널 문제가 아니라 십중팔구 이것입니다 — PowerShell(관리자)에서:
+
+```powershell
+usbipd list                        # RealSense D455 의 BUSID 확인 (STATE 가 Shared 여도 attach 는 별도)
+usbipd attach --wsl --busid 2-1    # 그 순간 WSL 에 /dev/video0~5 생성
+```
+
+- WSL 쪽 확인: `ls /dev/video*` — 권한이 `crw-rw-rw-`라 sudo 불필요
+- 노드 판별(D455): **video4 = 깨끗한 RGB**(`configs/app.yaml`의 `index: 4`), video2 는 IR 도트 혼입, video0 은 depth
+- 최초 1회만: `usbipd bind --busid 2-1` (Shared 로 만들기). 이후 재부팅엔 attach 만 다시
+
 ## 왜 결정론 방식인가 — 신경망 실측 비교
 
 "사진 한 장이면 알아서 움직여주는" 신경망 모델 두 계열을 같은 조건에서 실측한 뒤

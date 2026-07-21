@@ -154,3 +154,30 @@ def test_box_rig_blinks_without_touching_far_pixels():
     out = rig.render(blink_l=1.0, blink_r=1.0)
     assert not np.array_equal(out[200:240, 150:210], img[200:240, 150:210])  # eye region moved
     assert np.array_equal(out[:100], img[:100])  # far pixels untouched (no brow follow)
+
+
+# ---- hybrid layers (eyelid seal + mouth interior) ----
+
+def test_full_jaw_fills_mouth_interior():
+    from app.warp_rig import MOUTH_FILL, landmarks_from_boxes
+
+    img = np.full((512, 512, 3), 255, np.uint8)
+    img[300:306, 215:295] = 0  # mouth stroke
+    rig = WarpRig(img, landmarks_from_boxes(*BOXES, (512, 512)), brow_follow=False)
+    out = rig.render(jaw=1.0)
+    region = out[295:345, 210:300].reshape(-1, 3).astype(int)
+    assert (np.abs(region - MOUTH_FILL).sum(axis=1) < 30).any()  # interior fill present
+    assert np.array_equal(out[:200], img[:200])  # face above untouched
+
+
+def test_eye_seal_engages_only_past_ramp():
+    from app.warp_rig import landmarks_from_boxes, piecewise_affine
+
+    img = np.full((512, 512, 3), 255, np.uint8)
+    img[190:250, 140:220] = (160, 180, 200)  # skin patch so the lid color differs from bg
+    img[215:225, 175:185] = 0
+    rig = WarpRig(img, landmarks_from_boxes(*BOXES, (512, 512)), brow_follow=False)
+    for amt, engaged in ((0.6, False), (1.0, True)):
+        warp_only = piecewise_affine(img, rig.verts, rig.deform(blink_l=amt), rig.tris)
+        differs = not np.array_equal(rig.render(blink_l=amt), warp_only)
+        assert differs == engaged  # seal layer appears only above SEAL_RAMP start

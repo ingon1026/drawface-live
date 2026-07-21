@@ -45,7 +45,15 @@ FEATURE = sorted(set(L_EYE_TOP + L_EYE_BOT + R_EYE_TOP + R_EYE_BOT + L_BROW + R_
 # Displacement amplitudes were tuned on a 512² character whose eye span measured
 # ~135.6 px; they scale with the actual span so other resolutions/faces match.
 UNIT_REF = 135.6
-BLINK_MAX = 0.62  # pure-warp lid-closure ceiling; beyond this a layer swap takes over
+BLINK_MAX = 0.62   # pure-warp lid-squash ceiling; the seal layer finishes the close
+SEAL_RAMP = (0.70, 1.0)   # blink range over which the eyelid seal fades in
+JAW_RAMP = (0.30, 0.60)   # jaw range over which lips separate and the interior fills
+MOUTH_FILL = (53, 53, 138)  # BGR of #8a3535 — matches the sprite pipeline's default
+
+
+def _smoothstep(v: float, a: float, b: float) -> float:
+    t = min(1.0, max(0.0, (v - a) / (b - a)))
+    return t * t * (3.0 - 2.0 * t)
 
 
 class WarpRig:
@@ -87,6 +95,42 @@ class WarpRig:
         for row, vid in enumerate(self._pin_ids):
             self._pins0[row] += (centroid[vid] - self._pins0[row]) * 1e-4
         self._arap = ARAP(self._pins0, list(self.tris), self.verts)
+        self._sample_layer_colors()
+
+    def _sample_layer_colors(self) -> None:
+        """Hybrid-layer colors come from the drawing itself (no invented art):
+        lid fill = median just above each eye, stroke inks = darkest pixels of
+        the feature region."""
+        img, lm = self._img, self._lm
+        h, w = img.shape[:2]
+
+        def patch(x1: float, y1: float, x2: float, y2: float) -> np.ndarray:
+            x1, x2 = sorted((int(np.clip(x1, 0, w - 1)), int(np.clip(x2, 0, w - 1))))
+            y1, y2 = sorted((int(np.clip(y1, 0, h - 1)), int(np.clip(y2, 0, h - 1))))
+            return img[y1:y2 + 1, x1:x2 + 1].reshape(-1, 3)
+
+        def ink(px: np.ndarray) -> tuple[int, int, int]:
+            gray = px.mean(axis=1)
+            darkest = px[gray.argsort()[:max(1, len(px) // 20)]]
+            return tuple(int(c) for c in np.median(darkest, axis=0))
+
+        self._eye_colors = {}
+        for side, (top, bot) in (("L", (L_EYE_TOP, L_EYE_BOT)), ("R", (R_EYE_TOP, R_EYE_BOT))):
+            ring = lm[top + bot]
+            x1, y1 = ring.min(axis=0)
+            x2, y2 = ring.max(axis=0)
+            ry = max(3.0, (y2 - y1) / 2)
+            # Skin bands above AND below the eye; drop the darkest 45% so a brow,
+            # ear or outline stroke crossing the band can't tint the lid color.
+            px = np.vstack([patch(x1, y1 - 1.6 * ry, x2, y1 - 0.4 * ry),
+                            patch(x1, y2 + 0.3 * ry, x2, y2 + 1.2 * ry)])
+            keep = px[px.mean(axis=1) >= np.percentile(px.mean(axis=1), 45)]
+            lid = tuple(int(c) for c in np.median(keep if len(keep) else px, axis=0))
+            self._eye_colors[side] = {"lid": lid, "ink": ink(patch(x1, y1, x2, y2))}
+        ring = lm[LIP_TOP + LIP_BOT + MOUTH_CORNERS]
+        x1, y1 = ring.min(axis=0)
+        x2, y2 = ring.max(axis=0)
+        self._mouth_ink = ink(patch(x1, y1 - 2, x2, y2 + 2))
 
     def deform(self, blink_l: float = 0.0, blink_r: float = 0.0,
                smile: float = 0.0, jaw: float = 0.0) -> np.ndarray:
@@ -132,12 +176,14 @@ class WarpRig:
 
         if jaw > 0.0:
             v = min(jaw, 1.0)
+            w_open = _smoothstep(v, *JAW_RAMP)  # 0 = closed bow, 1 = lips fully split
             for i in CHIN:
-                add(i, 0.0, 9.0 * s * v)
+                add(i, 0.0, (9.0 + 5.0 * w_open) * s * v)
             # Inner-lip rings interleave along x; on a closed line-mouth they sit
             # on ONE stroke, so ring-wise displacement tears it into a sawtooth.
-            # Displace by each point's depth inside the lip band instead: drawn
-            # lips separate smoothly (3→8), a line-mouth moves as one stroke.
+            # Small jaw: displace by depth inside the lip band (drawn lips separate
+            # 3→8, a line-mouth moves as one stroke). Past JAW_RAMP the rings split
+            # for real — the interior fill covers the stretched stroke pixels.
             top_y = float(self._lm[LIP_TOP][:, 1].mean())
             bot_y = float(self._lm[LIP_BOT][:, 1].mean())
             gap = bot_y - top_y
@@ -146,7 +192,9 @@ class WarpRig:
                     frac = float(np.clip((self._lm[i][1] - top_y) / gap, 0.0, 1.0))
                 else:
                     frac = 1.0
-                add(i, 0.0, (3.0 + 5.0 * frac) * s * v)
+                base = (3.0 + 5.0 * frac) * s * v
+                split = (2.0 if i in LIP_TOP else 14.0) * s * v
+                add(i, 0.0, base * (1.0 - w_open) + split * w_open)
             for i in MOUTH_CORNERS:
                 add(i, 0.0, 4.0 * s * v)
 
@@ -160,7 +208,64 @@ class WarpRig:
     def render(self, blink_l: float = 0.0, blink_r: float = 0.0,
                smile: float = 0.0, jaw: float = 0.0) -> np.ndarray:
         new_verts = self.deform(blink_l=blink_l, blink_r=blink_r, smile=smile, jaw=jaw)
-        return piecewise_affine(self._img, self.verts, new_verts, self.tris)
+        out = piecewise_affine(self._img, self.verts, new_verts, self.tris)
+        # Hybrid layers: pure warp can't fully close an eye or show a mouth
+        # interior, so those are painted as polygons that FOLLOW the warped mesh
+        # (never boxes) with colors sampled from the drawing.
+        for side, amt, top, bot in (("L", blink_l, L_EYE_TOP, L_EYE_BOT),
+                                    ("R", blink_r, R_EYE_TOP, R_EYE_BOT)):
+            self._draw_eye_seal(out, new_verts, top, bot,
+                                _smoothstep(min(amt, 1.0), *SEAL_RAMP), self._eye_colors[side])
+        self._draw_mouth_interior(out, new_verts, _smoothstep(min(jaw, 1.0), *JAW_RAMP))
+        return out
+
+    def _ring_poly(self, verts: np.ndarray, top: list[int], bot: list[int]) -> np.ndarray:
+        """Polygon between two warped rings: top left→right, bottom right→left."""
+        t = verts[[self._vid[i] for i in top]]
+        b = verts[[self._vid[i] for i in bot]]
+        return np.vstack([t[np.argsort(t[:, 0])], b[np.argsort(b[:, 0])[::-1]]])
+
+    def _blend_poly(self, out: np.ndarray, poly: np.ndarray, alpha: float,
+                    fill: tuple, line: tuple | None, line_pts: np.ndarray | None,
+                    line_width: int) -> None:
+        if alpha <= 0.02:
+            return
+        x, y, w, h = cv2.boundingRect(poly.astype(np.int32))
+        m = line_width + 2
+        x, y = max(0, x - m), max(0, y - m)
+        x2 = min(out.shape[1], x + w + 2 * m)
+        y2 = min(out.shape[0], y + h + 2 * m)
+        roi = out[y:y2, x:x2]
+        layer = roi.copy()
+        cv2.fillPoly(layer, [(poly - [x, y]).astype(np.int32)], fill, lineType=cv2.LINE_AA)
+        if line is not None and line_pts is not None:
+            cv2.polylines(layer, [(line_pts - [x, y]).astype(np.int32)], False, line,
+                          line_width, lineType=cv2.LINE_AA)
+        cv2.addWeighted(layer, alpha, roi, 1.0 - alpha, 0.0, dst=roi)
+
+    def _draw_eye_seal(self, out: np.ndarray, verts: np.ndarray,
+                       top: list[int], bot: list[int], alpha: float, colors: dict) -> None:
+        """Finish the close: fill the residual opening between the warped lids
+        with the lid color and stroke the closure line in the eye's ink."""
+        if alpha <= 0.02:
+            return
+        poly = self._ring_poly(verts, top, bot)
+        t = verts[[self._vid[i] for i in top]]
+        line_pts = t[np.argsort(t[:, 0])]
+        width = max(2, int((poly[:, 0].max() - poly[:, 0].min()) * 0.06))
+        self._blend_poly(out, poly, alpha, colors["lid"], colors["ink"], line_pts, width)
+
+    def _draw_mouth_interior(self, out: np.ndarray, verts: np.ndarray, alpha: float) -> None:
+        """Fill the opening between the split lips (covers the stretched stroke
+        pixels of a line-mouth) and outline it with the mouth's ink."""
+        if alpha <= 0.02:
+            return
+        poly = self._ring_poly(verts, LIP_TOP + [MOUTH_CORNERS[0]], LIP_BOT + [MOUTH_CORNERS[1]])
+        if poly[:, 1].max() - poly[:, 1].min() < 3.0 * self._scale:
+            return
+        width = max(2, int(3.0 * self._scale))
+        self._blend_poly(out, poly, alpha, MOUTH_FILL, self._mouth_ink,
+                         np.vstack([poly, poly[:1]]), width)
 
 
 def landmarks_from_boxes(eye_l_box: tuple[float, float, float, float],

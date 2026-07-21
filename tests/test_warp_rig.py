@@ -125,6 +125,19 @@ def test_parallax_nose_leads_silhouette(rig):
     assert np.abs(moved[n_feature:]).max() < 0.5  # border pinned
 
 
+def test_roll_tilts_face_rigidly(rig):
+    from app.warp_rig import FACE_OVAL
+
+    moved = rig.deform(roll=1.0) - rig.verts
+    # rigid tilt about the oval center: top and bottom move in opposite x
+    top = vid(rig, FACE_OVAL[0])
+    bot = vid(rig, FACE_OVAL[len(FACE_OVAL) // 2])
+    assert moved[top, 0] < -3.0 and moved[bot, 0] > 3.0
+    n_feature = len(rig._vid)
+    assert np.abs(moved[n_feature:]).max() < 0.5  # border pinned
+    assert np.allclose(rig.deform(roll=0.0), rig.verts)  # rest identity
+
+
 def test_jaw_drops_chin(rig):
     d = rig.deform(jaw=1.0)
     moved = d - rig.verts

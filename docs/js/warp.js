@@ -42,6 +42,7 @@ const SEAL_RAMP = [0.70, 1.0];
 const JAW_RAMP = [0.30, 0.60];
 const MOUTH_FILL = [138, 53, 53]; // #8a3535, matches the sprite default style
 const PARALLAX_AMP = [10.0, 7.0];
+const MESH_ROLL_RAD = 0.21; // face-only roll: radians (~12 deg) of rigid tilt at channel +-1
 const PARALLAX_DEPTH = new Map();
 for (const i of [...LIP_TOP, ...LIP_BOT, ...MOUTH_CORNERS]) PARALLAX_DEPTH.set(i, 0.75);
 for (const i of CHIN) PARALLAX_DEPTH.set(i, 0.6);
@@ -239,7 +240,8 @@ export function buildWarpRig(char) {
   const nv = verts.length;
   const field = () => new Float32Array(nv * 2);
   const F = { blinkL: field(), blinkR: field(), smile: field(),
-              jawBow: field(), jawSplit: field(), yaw: field(), pitch: field() };
+              jawBow: field(), jawSplit: field(), yaw: field(), pitch: field(),
+              roll: field() };
   const add = (f, i, dx, dy) => { const v = vid.get(i); f[v * 2] += dx; f[v * 2 + 1] += dy; };
   const s = scale;
 
@@ -273,6 +275,15 @@ export function buildWarpRig(char) {
   for (const [i, depth] of PARALLAX_DEPTH) {
     add(F.yaw, i, PARALLAX_AMP[0] * s * depth, 0);
     add(F.pitch, i, 0, PARALLAX_AMP[1] * s * depth);
+  }
+  // Face-only roll: rigid small-angle rotation of every driven feature about
+  // the oval center. d = theta*(vy, -vx) spins the same way as drawScene's
+  // canvas roll (visually CCW for a positive angle).
+  const rcx = FACE_OVAL.reduce((a, i) => a + lm[i][0], 0) / FACE_OVAL.length;
+  const rcy = FACE_OVAL.reduce((a, i) => a + lm[i][1], 0) / FACE_OVAL.length;
+  for (const i of FEATURE) {
+    if (CHEEKS.includes(i)) continue; // free on desktop; IDW bake fills them below
+    add(F.roll, i, MESH_ROLL_RAD * (lm[i][1] - rcy), -MESH_ROLL_RAD * (lm[i][0] - rcx));
   }
 
   // Cheeks are free vertices on the desktop (ARAP interpolates them); here their
@@ -378,6 +389,7 @@ export function renderWarp(rig, ch) {
     smile: clamp(ch.smile, 0, 1),
     jawBow: clamp(ch.jaw, 0, 1) * (1 - wOpen), jawSplit: clamp(ch.jaw, 0, 1) * wOpen,
     yaw: clamp(ch.yaw, -1, 1), pitch: clamp(ch.pitch, -1, 1),
+    roll: clamp(ch.roll ?? 0, -1, 1),
   };
   const { verts, tris, fields, ctx } = rig;
   const wv = rig._warped;

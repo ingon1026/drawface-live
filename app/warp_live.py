@@ -42,6 +42,10 @@ log = logging.getLogger("warp_live")
 DEFAULT_GAINS = {"blink_gain": 2.0, "smile_gain": 2.0, "jaw_gain": 1.6, "head_parallax": 1.0}
 DEFAULT_IDLE = {"breath_period_s": 3.6, "breath_amp": 0.05,
                 "blink_min_s": 4.0, "blink_max_s": 7.0, "blink_ms": 260}
+# In warp mode the mesh rolls the face itself, so the canvas keeps only this
+# share of the roll (body sways a little, face leads) — full canvas roll on top
+# of the mesh roll would rotate the face twice.
+CANVAS_ROLL_SHARE = 0.35
 
 
 class IdleMotion:
@@ -104,6 +108,7 @@ def channels(smoothed: dict[str, float], head: dict[str, float], mirror: bool,
         "jaw": min(1.0, smoothed["jawOpen"] * gains["jaw_gain"]),
         "yaw": head["yaw"] * head_cfg["yaw_gain_px"] / head_cfg["max_shift_px"] * par,
         "pitch": head["pitch"] * head_cfg["pitch_gain_px"] / head_cfg["max_shift_px"] * par,
+        "roll": head["roll"] * head_cfg["roll_gain"] / head_cfg["max_roll_deg"] * par,
     }
 
 
@@ -208,7 +213,8 @@ def main() -> int:
         if not calib.active:
             idle.apply(ch, ts_ms, max(smoothed["eyeBlinkLeft"], smoothed["eyeBlinkRight"]))
         out = rig.render(**ch)
-        out = apply_head_transform(out, head["yaw"], head["pitch"], head["roll"], cfg["head"])
+        out = apply_head_transform(out, head["yaw"], head["pitch"],
+                                   head["roll"] * CANVAS_ROLL_SHARE, cfg["head"])
         if not args.no_debug_overlay:
             face = "face:OK" if obs is not None else "face:LOST"
             state = "CALIBRATING" if calib.active else " ".join(f"{k}:{v:.2f}" for k, v in ch.items())

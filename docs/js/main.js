@@ -26,6 +26,11 @@ const VIZ_BARS = [
 ];
 const CLICK_STEPS = ["왼눈 중심", "오른눈 중심", "입 좌상단", "입 우하단"];
 
+// In warp mode the mesh rolls the face itself, so the canvas keeps only this
+// share of the roll (body sways a little, face leads) — full canvas roll on top
+// of the mesh roll would rotate the face twice.
+const CANVAS_ROLL_SHARE = 0.35;
+
 // ---------- camera list ----------
 // RealSense-class devices expose several video inputs (RGB/depth/IR) — the
 // browser's default pick can be the wrong one, so let the user choose.
@@ -502,7 +507,6 @@ function loopBody(video, char, st, now) {
   const mouth = pickMouth(st.smoothed, CONFIG.mouth);
 
   const useWarp = char.warp && $("warpChk").checked;
-  let frame;
   if (useWarp) {
     const g = CONFIG.warp;
     const blink = {};
@@ -517,15 +521,17 @@ function loopBody(video, char, st, now) {
       // Mesh parallax reuses the canvas-shift gains for direction/normalization.
       yaw: (st.head.yaw * CONFIG.head.yawGainPx / CONFIG.head.maxShiftPx) * g.headParallax,
       pitch: (st.head.pitch * CONFIG.head.pitchGainPx / CONFIG.head.maxShiftPx) * g.headParallax,
+      roll: (st.head.roll * CONFIG.head.rollGain / CONFIG.head.maxRollDeg) * g.headParallax,
     };
     if (!st.calib.active) {
       st.idle.apply(ch, now, Math.max(st.smoothed.eyeBlinkLeft, st.smoothed.eyeBlinkRight));
     }
-    frame = renderWarp(char.warp, ch);
+    const frame = renderWarp(char.warp, ch);
+    // The mesh already rolled the face — the canvas keeps only a share.
+    drawScene(st.outCtx, frame, { ...st.head, roll: st.head.roll * CANVAS_ROLL_SHARE }, CONFIG.head);
   } else {
-    frame = composeCharacter(char, eyeStates.L, eyeStates.R, mouth);
+    drawScene(st.outCtx, composeCharacter(char, eyeStates.L, eyeStates.R, mouth), st.head, CONFIG.head);
   }
-  drawScene(st.outCtx, frame, st.head, CONFIG.head);
   if ($("fxChk").checked) {
     if (!st.calib.active) st.fx.update(st.smoothed, now);
     st.fx.draw(st.outCtx, now);

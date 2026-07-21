@@ -73,6 +73,7 @@ def test_warp_constants_match_python():
     assert js_const(r"SEAL_RAMP = \[([\d.]+), ([\d.]+)\]") == list(wr.SEAL_RAMP)
     assert js_const(r"JAW_RAMP = \[([\d.]+), ([\d.]+)\]") == list(wr.JAW_RAMP)
     assert js_const(r"PARALLAX_AMP = \[([\d.]+), ([\d.]+)\]") == list(wr.PARALLAX_AMP)
+    assert js_const(r"MESH_ROLL_RAD = ([\d.]+)") == [wr.MESH_ROLL_RAD]
     # MOUTH_FILL: python stores BGR, js stores RGB
     assert js_const(r"MOUTH_FILL = \[(\d+), (\d+), (\d+)\]") == list(wr.MOUTH_FILL[::-1])
 

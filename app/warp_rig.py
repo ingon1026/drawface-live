@@ -71,6 +71,7 @@ for _i in NOSE:
 for _i in FACE_OVAL:
     PARALLAX_DEPTH.setdefault(_i, 0.15)  # CHIN-shared vertices keep the chin depth
 PARALLAX_AMP = (10.0, 7.0)  # max extra px (x, y) at scale 1 for depth-1.0 features
+MESH_ROLL_RAD = 0.21  # face-only roll: radians (≈12°) of rigid tilt at channel ±1
 
 
 class WarpRig:
@@ -155,8 +156,8 @@ class WarpRig:
 
     def deform(self, blink_l: float = 0.0, blink_r: float = 0.0,
                smile: float = 0.0, jaw: float = 0.0,
-               yaw: float = 0.0, pitch: float = 0.0) -> np.ndarray:
-        """Expression channels 0..1, head yaw/pitch -1..1 → new vertex positions."""
+               yaw: float = 0.0, pitch: float = 0.0, roll: float = 0.0) -> np.ndarray:
+        """Expression channels 0..1, head yaw/pitch/roll -1..1 → new vertex positions."""
         s = self._scale
         delta: dict[int, np.ndarray] = {}
 
@@ -226,6 +227,18 @@ class WarpRig:
             for i, depth in PARALLAX_DEPTH.items():
                 add(i, PARALLAX_AMP[0] * s * yv * depth, PARALLAX_AMP[1] * s * pv * depth)
 
+        if abs(roll) > 1e-3:
+            # Face-only roll: rigid small-angle rotation of every driven feature
+            # about the oval center. d = theta*(vy, -vx) spins the same way as
+            # apply_head_transform's canvas roll (OpenCV CCW-positive on screen).
+            theta = MESH_ROLL_RAD * float(np.clip(roll, -1.0, 1.0))
+            c = self._lm[FACE_OVAL].mean(axis=0)
+            for i in FEATURE:
+                if i in CHEEKS:
+                    continue  # free vertices — ARAP fills in their motion
+                v = self._lm[i] - c
+                add(i, theta * float(v[1]), -theta * float(v[0]))
+
         if not delta:
             return self.verts.copy()
         pins = self._pins0.copy()
@@ -235,9 +248,9 @@ class WarpRig:
 
     def render(self, blink_l: float = 0.0, blink_r: float = 0.0,
                smile: float = 0.0, jaw: float = 0.0,
-               yaw: float = 0.0, pitch: float = 0.0) -> np.ndarray:
+               yaw: float = 0.0, pitch: float = 0.0, roll: float = 0.0) -> np.ndarray:
         new_verts = self.deform(blink_l=blink_l, blink_r=blink_r, smile=smile, jaw=jaw,
-                                yaw=yaw, pitch=pitch)
+                                yaw=yaw, pitch=pitch, roll=roll)
         out = piecewise_affine(self._img, self.verts, new_verts, self.tris)
         # Hybrid layers: pure warp can't fully close an eye or show a mouth
         # interior, so those are painted as polygons that FOLLOW the warped mesh

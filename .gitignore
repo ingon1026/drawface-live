@@ -21,3 +21,6 @@ __pycache__/
 # Logs / WSL cruft
 *.log
 *Zone.Identifier
+
+# Claude Code harness (agent worktrees live here)
+.claude/

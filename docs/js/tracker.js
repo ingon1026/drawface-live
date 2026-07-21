@@ -1,11 +1,13 @@
 // MediaPipe Face Landmarker wrapper (browser only) — the web counterpart of
 // app/face_tracker.py. Loads @mediapipe/tasks-vision from CDN; detect() returns
 // blendshapes + head euler angles + normalized landmarks, or null when no face.
-import { CDN_URL, WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js";
+import { WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js";
 
-// Top-level await keeps CDN_URL the single source of truth (trackconfig.js);
-// failure semantics match the previous static import — the module fails to load.
-const { FaceLandmarker, FilesetResolver } = await import(CDN_URL);
+// STATIC import (URL must match trackconfig.CDN_URL — workers can't share a
+// static specifier): the page's load event then waits for the module graph, so
+// UI listeners are wired the moment the page looks ready. A top-level dynamic
+// import left every button dead while the CDN resolved.
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17";
 
 export async function createTracker() {
   let vision;

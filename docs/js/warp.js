@@ -139,14 +139,15 @@ export function landmarksFromBoxes(eyeL, eyeR, mouth, w, h) {
 }
 
 function sampleColors(neutral, lm) {
+  const size = neutral.width;
   const { data } = getData(neutral);
   const patch = (x1, y1, x2, y2) => {
     const px = [];
-    [x1, x2] = [Math.round(clamp(Math.min(x1, x2), 0, CANVAS - 1)), Math.round(clamp(Math.max(x1, x2), 0, CANVAS - 1))];
-    [y1, y2] = [Math.round(clamp(Math.min(y1, y2), 0, CANVAS - 1)), Math.round(clamp(Math.max(y1, y2), 0, CANVAS - 1))];
+    [x1, x2] = [Math.round(clamp(Math.min(x1, x2), 0, size - 1)), Math.round(clamp(Math.max(x1, x2), 0, size - 1))];
+    [y1, y2] = [Math.round(clamp(Math.min(y1, y2), 0, size - 1)), Math.round(clamp(Math.max(y1, y2), 0, size - 1))];
     for (let y = y1; y <= y2; y++) {
       for (let x = x1; x <= x2; x++) {
-        const o = (y * CANVAS + x) * 4;
+        const o = (y * size + x) * 4;
         px.push([data[o], data[o + 1], data[o + 2]]);
       }
     }
@@ -206,7 +207,14 @@ function landmarksAgreeWithBoxes(lm, [eyeL, eyeR, mouth]) {
 }
 
 export function buildWarpRig(char) {
-  const neutral = composeCharacter(char, "open", "open", "closed");
+  // Hi-res route: the original drawing (stored at up to 1024 by onboarding)
+  // already contains the eyes/mouth, so it can BE the warp source directly —
+  // sharper output than warping the 512 sprite composite. Geometry stays in
+  // 512 space (boxes/landmarks live there) and is scaled up at the end.
+  const src = char.source ?? null;
+  const size = src ? src.width : CANVAS;
+  const sizeScale = size / CANVAS;
+  const neutral = src ?? composeCharacter(char, "open", "open", "closed");
   const boxes = [char.eyes.L.open, char.eyes.R.open, char.mouths.closed].map(alphaBox);
   if (boxes.some((b) => !b)) throw new Error("onboarding sprites lack alpha bounds");
   // Detectable drawings carry their real 478-point geometry from onboarding —
@@ -220,14 +228,15 @@ export function buildWarpRig(char) {
   }
   const realGeometry = !!lm;
   if (!lm) lm = landmarksFromBoxes(boxes[0], boxes[1], boxes[2], CANVAS, CANVAS);
+  if (sizeScale !== 1) lm = lm.map(([x, y]) => [x * sizeScale, y * sizeScale]);
 
   const vid = new Map(FEATURE.map((i, k) => [i, k]));
   const verts = FEATURE.map((i) => [...lm[i]]);
   const borderSeen = new Set();
   for (let k = 0; k < 9; k++) {
     const t = k / 8;
-    for (const p of [[t * (CANVAS - 1), 0], [t * (CANVAS - 1), CANVAS - 1],
-                     [0, t * (CANVAS - 1)], [CANVAS - 1, t * (CANVAS - 1)]]) {
+    for (const p of [[t * (size - 1), 0], [t * (size - 1), size - 1],
+                     [0, t * (size - 1)], [size - 1, t * (size - 1)]]) {
       const key = `${p[0]},${p[1]}`;
       if (!borderSeen.has(key)) { borderSeen.add(key); verts.push(p); }
     }
@@ -309,7 +318,7 @@ export function buildWarpRig(char) {
   }
 
   const rings = (ids) => ids.map((i) => vid.get(i));
-  const out = newCanvas(CANVAS, CANVAS);
+  const out = newCanvas(size, size);
   return {
     neutral, verts, tris, scale,
     fields: F,

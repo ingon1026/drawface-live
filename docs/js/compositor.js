@@ -4,6 +4,7 @@
 // premultiplied numpy math. Sprite keys 'L'/'R' are VIEWER-left/right.
 import { CANVAS } from "./config.js";
 import { newCanvas } from "./imageops.js";
+import { deriveAll } from "./derive.js";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -28,6 +29,11 @@ function flattenBase(base) {
 // optional sprites resolve once here (half->open, smile->closed), like sprite_backend.
 export function prepareCharacter(loaded) {
   const { canvases } = loaded;
+  // store.js persists only the core sprite set; derived ones (visemes, halfs,
+  // smile) are deterministic, so rebuild them here on load (~100 ms).
+  if (loaded.manifest?.proceduralMouth && !canvases["mouth_A.png"]) {
+    deriveAll(canvases, loaded.manifest);
+  }
   const base = flattenBase(req(canvases, "base.png"));
 
   const eyes = {};
@@ -42,7 +48,8 @@ export function prepareCharacter(loaded) {
   for (const k of ["closed", "A", "E", "I", "O", "U"]) mouths[k] = req(canvases, `mouth_${k}.png`);
   mouths.smile = canvases["mouth_smile.png"] ?? mouths.closed;
 
-  return { name: loaded.name, manifest: loaded.manifest, base, eyes, mouths, memo: new Map() };
+  return { name: loaded.name, manifest: loaded.manifest, base, eyes, mouths,
+           source: canvases["source.png"] ?? null, memo: new Map() };
 }
 
 // Memoized per-state composite (base + eye L + eye R + mouth), <=72 combinations.
@@ -80,19 +87,23 @@ function topLeftColor(canvas) {
 // app/sprite_backend.apply_head_transform. BORDER_REPLICATE is approximated by
 // pre-filling with the composed top-left pixel color.
 export function drawScene(ctx, composed, head, headCfg) {
-  const dx = clamp(head.yaw * headCfg.yawGainPx, -headCfg.maxShiftPx, headCfg.maxShiftPx);
-  const dy = clamp(head.pitch * headCfg.pitchGainPx, -headCfg.maxShiftPx, headCfg.maxShiftPx);
+  // The target canvas may be a hi-res warp output (source-resolution rig) —
+  // scale the px-tuned head gains so motion stays proportional.
+  const S = ctx.canvas.width;
+  const k = S / CANVAS;
+  const dx = clamp(head.yaw * headCfg.yawGainPx, -headCfg.maxShiftPx, headCfg.maxShiftPx) * k;
+  const dy = clamp(head.pitch * headCfg.pitchGainPx, -headCfg.maxShiftPx, headCfg.maxShiftPx) * k;
   const angleDeg = clamp(head.roll * headCfg.rollGain, -headCfg.maxRollDeg, headCfg.maxRollDeg);
-  const cx = CANVAS / 2, cy = CANVAS / 2;
+  const cx = S / 2, cy = S / 2;
 
   ctx.save();
   ctx.fillStyle = topLeftColor(composed);
-  ctx.fillRect(0, 0, CANVAS, CANVAS);
+  ctx.fillRect(0, 0, S, S);
   // Transform = Translate(dx,dy) ∘ RotateAboutCenter(angle); negative angle matches
   // OpenCV getRotationMatrix2D's CCW-positive convention (canvas rotate is CW-positive).
   ctx.translate(cx + dx, cy + dy);
   ctx.rotate((-angleDeg * Math.PI) / 180);
   ctx.translate(-cx, -cy);
-  ctx.drawImage(composed, 0, 0);
+  ctx.drawImage(composed, 0, 0, S, S);
   ctx.restore();
 }

@@ -1,6 +1,6 @@
 // DrawFace Live web — UI wiring and the render loop (browser twin of app/main.py).
-import { CANVAS, CONFIG } from "./config.js";
-import { fit512, expandBoxToInk, newCanvas } from "./imageops.js";
+import { CANVAS, CONFIG, SOURCE_MAX } from "./config.js";
+import { fit512, fitTo, expandBoxToInk, newCanvas } from "./imageops.js";
 import { buildCharacter } from "./onboard.js";
 import { deriveAll } from "./derive.js";
 import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js";
@@ -67,7 +67,7 @@ function refreshList(selectName) {
 // ---------- onboarding ----------
 const BOX_HANDLE_RADIUS = 12;
 const BOX_MIN_SIZE = 12;
-const ob = { img: null, points: [], draft: null, previewChar: null, drag: null, landmarks: null };
+const ob = { img: null, points: [], draft: null, previewChar: null, drag: null, landmarks: null, src: null };
 
 function obStatus() {
   const n = ob.points.length;
@@ -143,6 +143,9 @@ function invalidateOnboardingPreview() {
 async function openOnboarding(file) {
   const bmp = await createImageBitmap(file);
   ob.img = fit512(bmp);
+  // Keep a hi-res copy when the original beats 512 — the warp engine renders
+  // from it directly (the drawing already contains the eyes/mouth).
+  ob.src = (bmp.width > CANVAS || bmp.height > CANVAS) ? fitTo(bmp, SOURCE_MAX) : null;
   ob.points = [];
   ob.drag = null;
   ob.draft = null;
@@ -263,6 +266,7 @@ $("obGenerate").onclick = () => {
     const { manifest, canvases } = buildCharacter(ob.img, name, { L, R },
       Number($("eyeHalf").value) || 16, mouth);
     if (ob.landmarks) manifest.landmarks = ob.landmarks; // warp rig prefers real geometry
+    if (ob.src) canvases["source.png"] = ob.src;         // hi-res warp source
     deriveAll(canvases, manifest);
     ob.draft = { name, manifest, canvases };
     ob.previewChar = prepareCharacter(ob.draft);
@@ -412,6 +416,10 @@ async function start() {
       console.warn("warp rig unavailable:", err);
     }
     $("warpChk").disabled = !char.warp;
+    // Hi-res warp rigs render larger than 512 — raise the output backing store
+    // (CSS keeps the on-page size; recording captures at this resolution).
+    const outSize = char.warp ? char.warp.out.width : CANVAS;
+    $("output").width = $("output").height = outSize;
     const st = {
       mirror: $("mirrorChk").checked,
       calib: new Calibration(CONFIG.calibration.frames),
@@ -425,7 +433,7 @@ async function start() {
       lastSeen: performance.now(), fps: 0, tPrev: performance.now(), workerTs: -1,
       outCtx: $("output").getContext("2d"),      // hoisted out of the frame loop
       prevCtx: $("preview").getContext("2d"),
-      fx: new StickerFx(CANVAS),
+      fx: new StickerFx(outSize),
       idle: new IdleMotion(CONFIG.idle),
     };
     run.on = true;

@@ -77,22 +77,26 @@ function edgeMedian(canvas) {
 }
 
 /** Port of fit_512: fit + center onto a 512 canvas, padded with the source's border-median color. */
-export function fit512(imgSource) {
+export function fitTo(imgSource, size) {
   const sw = imgSource.naturalWidth || imgSource.width;
   const sh = imgSource.naturalHeight || imgSource.height;
   const src = newCanvas(sw, sh);
   src.getContext("2d").drawImage(imgSource, 0, 0);
   const [br, bg, bb] = edgeMedian(src);
-  const s = Math.min(CANVAS / sw, CANVAS / sh);
+  const s = Math.min(size / sw, size / sh);
   const w = Math.floor(sw * s), h = Math.floor(sh * s);
-  const out = newCanvas(CANVAS, CANVAS);
+  const out = newCanvas(size, size);
   const ctx = out.getContext("2d");
   ctx.fillStyle = `rgb(${br},${bg},${bb})`;
-  ctx.fillRect(0, 0, CANVAS, CANVAS);
+  ctx.fillRect(0, 0, size, size);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(src, 0, 0, sw, sh, Math.floor((CANVAS - w) / 2), Math.floor((CANVAS - h) / 2), w, h);
+  ctx.drawImage(src, 0, 0, sw, sh, Math.floor((size - w) / 2), Math.floor((size - h) / 2), w, h);
   return out;
+}
+
+export function fit512(imgSource) {
+  return fitTo(imgSource, CANVAS);
 }
 
 /** Port of snap_to_ink: centroid of ink pixels (r+g+b < 300) within ±r box. */

@@ -24,6 +24,9 @@ export const CONFIG = {
 };
 
 export const CANVAS = 512;
+// Hi-res warp source cap: onboarding keeps the original drawing up to this size
+// so the warp engine can render (and record) sharper than the 512 sprite space.
+export const SOURCE_MAX = 1024;
 
 // Sprite derivation parameters (mirror of scripts/derive_sprites.py)
 export const DERIVE = {

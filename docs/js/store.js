@@ -11,10 +11,19 @@ export function listCharacters() {
   return Object.keys(readAll()).sort();
 }
 
+// Derived sprites (visemes, half-eyes, smile) are deterministic re-derivations
+// of the core set — compositor.js rebuilds them at load, so storing them would
+// only multiply the localStorage footprint.
+const CORE_FILES = new Set(["base.png", "eye_L_open.png", "eye_R_open.png",
+  "eye_L_closed.png", "eye_R_closed.png", "mouth_closed.png", "source.png"]);
+
 export function saveCharacter(name, manifest, canvases) {
   const all = readAll();
   const images = {};
-  for (const [file, canvas] of Object.entries(canvases)) images[file] = canvas.toDataURL("image/png");
+  for (const [file, canvas] of Object.entries(canvases)) {
+    if (manifest.proceduralMouth && !CORE_FILES.has(file)) continue;
+    images[file] = canvas.toDataURL("image/png");
+  }
   all[name] = { name, manifest, images };
   localStorage.setItem(KEY, JSON.stringify(all));
 }

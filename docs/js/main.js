@@ -5,7 +5,7 @@ import { buildCharacter } from "./onboard.js";
 import { deriveAll } from "./derive.js";
 import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js";
 import {
-  SMOOTH_KEYS, Ema, TriStateEye, Calibration,
+  SMOOTH_KEYS, OneEuro, IdleMotion, TriStateEye, Calibration,
   pickMouth, eyeKeyForUserSide,
 } from "./pipeline.js";
 import { createTracker, detectOnImage } from "./tracker.js";
@@ -62,7 +62,7 @@ function refreshList(selectName) {
 // ---------- onboarding ----------
 const BOX_HANDLE_RADIUS = 12;
 const BOX_MIN_SIZE = 12;
-const ob = { img: null, points: [], draft: null, previewChar: null, drag: null };
+const ob = { img: null, points: [], draft: null, previewChar: null, drag: null, landmarks: null };
 
 function obStatus() {
   const n = ob.points.length;
@@ -150,6 +150,7 @@ async function openOnboarding(file) {
   // Photo-trained models often miss hand drawings — prefill when it works,
   // fall back to manual clicks when it doesn't (see outputs/benchmark.md).
   const auto = await detectOnImage(ob.img);
+  ob.landmarks = auto?.landmarks ?? null; // real geometry -> finer warp rig
   if (auto && ob.points.length === 0) {
     ob.points = [auto.eyes.L, auto.eyes.R,
                  [auto.mouthBox[0], auto.mouthBox[1]], [auto.mouthBox[2], auto.mouthBox[3]]];
@@ -256,6 +257,7 @@ $("obGenerate").onclick = () => {
   try {
     const { manifest, canvases } = buildCharacter(ob.img, name, { L, R },
       Number($("eyeHalf").value) || 16, mouth);
+    if (ob.landmarks) manifest.landmarks = ob.landmarks; // warp rig prefers real geometry
     deriveAll(canvases, manifest);
     ob.draft = { name, manifest, canvases };
     ob.previewChar = prepareCharacter(ob.draft);
@@ -407,8 +409,9 @@ async function start() {
       mirror: $("mirrorChk").checked,
       calib: new Calibration(CONFIG.calibration.frames),
       emas: Object.fromEntries(SMOOTH_KEYS.map((k) => [k,
-        new Ema(k.startsWith("eyeBlink") ? CONFIG.smoothing.blinkAlpha : CONFIG.smoothing.blendAlpha)])),
-      headEmas: { yaw: new Ema(CONFIG.smoothing.headAlpha), pitch: new Ema(CONFIG.smoothing.headAlpha), roll: new Ema(CONFIG.smoothing.headAlpha) },
+        new OneEuro(CONFIG.smoothing.minCutoff, CONFIG.smoothing.beta)])),
+      headEmas: Object.fromEntries(["yaw", "pitch", "roll"].map((k) => [k,
+        new OneEuro(CONFIG.smoothing.headMinCutoff, CONFIG.smoothing.headBeta)])),
       eyes: { left: new TriStateEye(CONFIG.eyes), right: new TriStateEye(CONFIG.eyes) },
       smoothed: Object.fromEntries(SMOOTH_KEYS.map((k) => [k, 0])),
       head: { yaw: 0, pitch: 0, roll: 0 },
@@ -416,6 +419,7 @@ async function start() {
       outCtx: $("output").getContext("2d"),      // hoisted out of the frame loop
       prevCtx: $("preview").getContext("2d"),
       fx: new StickerFx(CANVAS),
+      idle: new IdleMotion(CONFIG.idle),
     };
     run.on = true;
     $("startBtn").textContent = "정지";
@@ -477,8 +481,9 @@ function loopBody(video, char, st, now) {
       st.calib.feed(obs.blend);
     } else {
       const values = st.calib.apply(obs.blend);
-      for (const k of SMOOTH_KEYS) st.smoothed[k] = st.emas[k].update(values[k]);
-      for (const k of ["yaw", "pitch", "roll"]) st.head[k] = st.headEmas[k].update(obs[k]);
+      const tSec = now / 1000;
+      for (const k of SMOOTH_KEYS) st.smoothed[k] = st.emas[k].update(values[k], tSec);
+      for (const k of ["yaw", "pitch", "roll"]) st.head[k] = st.headEmas[k].update(obs[k], tSec);
     }
   } else {
     const lost = now - st.lastSeen;
@@ -505,14 +510,18 @@ function loopBody(video, char, st, now) {
       const key = side === "left" ? "eyeBlinkLeft" : "eyeBlinkRight";
       blink[eyeKeyForUserSide(side, st.mirror)] = st.smoothed[key] * g.blinkGain;
     }
-    frame = renderWarp(char.warp, {
+    const ch = {
       blinkL: blink.L, blinkR: blink.R,
       smile: ((st.smoothed.mouthSmileLeft + st.smoothed.mouthSmileRight) / 2) * g.smileGain,
       jaw: st.smoothed.jawOpen * g.jawGain,
       // Mesh parallax reuses the canvas-shift gains for direction/normalization.
       yaw: (st.head.yaw * CONFIG.head.yawGainPx / CONFIG.head.maxShiftPx) * g.headParallax,
       pitch: (st.head.pitch * CONFIG.head.pitchGainPx / CONFIG.head.maxShiftPx) * g.headParallax,
-    });
+    };
+    if (!st.calib.active) {
+      st.idle.apply(ch, now, Math.max(st.smoothed.eyeBlinkLeft, st.smoothed.eyeBlinkRight));
+    }
+    frame = renderWarp(char.warp, ch);
   } else {
     frame = composeCharacter(char, eyeStates.L, eyeStates.R, mouth);
   }

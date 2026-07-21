@@ -88,3 +88,53 @@ def test_mouth_selection_ladder():
     assert pick_mouth({"jawOpen": 0.10, "mouthPucker": 0.5}, MOUTH_CFG) == "U"
     assert pick_mouth({"jawOpen": 0.20, "mouthPucker": 0.5}, MOUTH_CFG) == "O"
     assert pick_mouth({"jawOpen": 0.20, "mouthFunnel": 0.5}, MOUTH_CFG) == "O"
+
+
+def test_one_euro_snappy_on_steps_smooth_at_rest():
+    """One Euro must beat the old fixed EMAs on both ends: follow a step at
+    least as fast as the blink EMA would, and ripple less than the blend EMA
+    under alternating sensor noise."""
+    from app.sprite_backend import Ema, OneEuro
+
+    dt = 1 / 30
+    # step 0 -> 1: first filtered sample should land near the blink EMA's 0.70
+    f = OneEuro(min_cutoff=1.2, beta=2.0)
+    f.update(0.0, 0.0)
+    first = f.update(1.0, dt)
+    assert first >= 0.6
+
+    # alternating +-0.02 noise around 0.5: ripple must be below the 0.45 EMA's
+    f = OneEuro(min_cutoff=1.2, beta=2.0)
+    e = Ema(0.45)
+    fs, es = [], []
+    t = 0.0
+    for i in range(60):
+        t += dt
+        x = 0.5 + (0.02 if i % 2 else -0.02)
+        fs.append(f.update(x, t))
+        es.append(e.update(x))
+    ripple = lambda seq: max(seq[-20:]) - min(seq[-20:])
+    assert ripple(fs) < ripple(es)
+
+
+def test_idle_motion_blinks_when_user_does_not():
+    import random
+
+    from app.warp_live import DEFAULT_IDLE, IdleMotion
+
+    random.seed(7)
+    idle = IdleMotion(DEFAULT_IDLE)
+    peak, breath_seen = 0.0, False
+    for ms in range(0, 10_000, 33):  # 10 s @ ~30fps, user never blinks
+        ch = {"blink_l": 0.0, "blink_r": 0.0, "pitch": 0.0}
+        idle.apply(ch, float(ms), real_blink=0.0)
+        peak = max(peak, ch["blink_l"])
+        breath_seen = breath_seen or abs(ch["pitch"]) > 0.01
+    assert peak > 0.5    # a scripted blink fired
+    assert breath_seen   # breathing bob active
+
+    idle2 = IdleMotion(DEFAULT_IDLE)
+    for ms in range(0, 8_000, 33):  # user blinking for real: no scripted overlay
+        ch = {"blink_l": 0.9, "blink_r": 0.9, "pitch": 0.0}
+        idle2.apply(ch, float(ms), real_blink=0.9)
+        assert ch["blink_l"] == 0.9

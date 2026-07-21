@@ -39,10 +39,19 @@ def test_thresholds_match_app_yaml():
         "holdMs": APP["lost_face"]["hold_ms"],
         "decayMs": APP["lost_face"]["decay_ms"],
         "frames": APP["calibration"]["frames"],
+        "minCutoff": APP["smoothing"]["min_cutoff"],
+        "beta": APP["smoothing"]["beta"],
+        "headMinCutoff": APP["smoothing"]["head_min_cutoff"],
+        "headBeta": APP["smoothing"]["head_beta"],
         "blinkGain": APP["warp"]["blink_gain"],
         "smileGain": APP["warp"]["smile_gain"],
         "jawGain": APP["warp"]["jaw_gain"],
         "headParallax": APP["warp"]["head_parallax"],
+        "breathPeriodS": APP["idle"]["breath_period_s"],
+        "breathAmp": APP["idle"]["breath_amp"],
+        "blinkMinS": APP["idle"]["blink_min_s"],
+        "blinkMaxS": APP["idle"]["blink_max_s"],
+        "blinkMs": APP["idle"]["blink_ms"],
     }
     mismatches = {k: (js_number(k), v) for k, v in pairs.items() if js_number(k) != v}
     assert not mismatches, f"config.js drifted from configs/app.yaml: {mismatches}"

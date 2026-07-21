@@ -15,7 +15,13 @@ tracker:
 control:
   mirror: true      # true: user's LEFT eye drives the sprite on the VIEWER-LEFT (mirror-like)
 
+# Live paths use the One Euro filter (speed-adaptive: smooth at rest, snappy on
+# fast motion). The fixed alphas below remain for offline tools (sprite_video).
 smoothing:
+  min_cutoff: 1.2       # Hz — baseline smoothing for blendshape channels
+  beta: 2.0             # speed coefficient — rest stays smooth, a blink gets a ~0.7 alpha
+  head_min_cutoff: 1.0  # Hz — head yaw/pitch/roll (degrees scale)
+  head_beta: 0.02
   blend_alpha: 0.45 # EMA for blendshape values (higher = snappier)
   blink_alpha: 0.70 # faster EMA for eyeBlink channels — blinks last only a few frames
   head_alpha: 0.30  # EMA for head pose
@@ -54,3 +60,11 @@ warp:
   smile_gain: 2.0
   jaw_gain: 1.6
   head_parallax: 1.0  # mesh parallax strength on top of canvas shift (0 = off)
+
+# Idle motion — keeps the character alive when the face is still or lost
+idle:
+  breath_period_s: 3.6  # breathing bob cycle
+  breath_amp: 0.05      # pitch-channel amplitude
+  blink_min_s: 4.0      # min gap since the last (real or idle) blink
+  blink_max_s: 7.0
+  blink_ms: 260         # scripted blink duration

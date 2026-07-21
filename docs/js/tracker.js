@@ -125,6 +125,9 @@ export async function detectOnImage(canvas) {
       eyes: { L: L.map(Math.round), R: R.map(Math.round) },
       eyeHalf,
       mouthBox,
+      // Raw normalized landmarks — stored in the character manifest so the warp
+      // rig can use real face geometry instead of box-synthesized rings.
+      landmarks: lm.map((p) => [Number(p.x.toFixed(5)), Number(p.y.toFixed(5))]),
     };
   } catch {
     return null; // CDN/offline or detection failure — manual clicks still work

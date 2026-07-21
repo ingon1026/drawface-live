@@ -20,7 +20,7 @@ from app.camera import LatestFrameCamera
 from app.config import load_config
 from app.face_tracker import FaceTracker, Observation
 from app.sprite_backend import (
-    Ema,
+    OneEuro,
     SpriteCharacter,
     TriStateEye,
     apply_head_transform,
@@ -171,10 +171,10 @@ def main() -> int:
     camera = LatestFrameCamera(cam_index, cfg["camera"]["width"], cfg["camera"]["height"])
 
     mirror = cfg["control"]["mirror"] if args.mirror is None else args.mirror == "on"
-    blink_alpha = cfg["smoothing"].get("blink_alpha", cfg["smoothing"]["blend_alpha"])
-    emas = {k: Ema(blink_alpha if k.startswith("eyeBlink") else cfg["smoothing"]["blend_alpha"])
+    emas = {k: OneEuro(cfg["smoothing"]["min_cutoff"], cfg["smoothing"]["beta"])
             for k in SMOOTH_KEYS}
-    head_emas = {k: Ema(cfg["smoothing"]["head_alpha"]) for k in ("yaw", "pitch", "roll")}
+    head_emas = {k: OneEuro(cfg["smoothing"]["head_min_cutoff"], cfg["smoothing"]["head_beta"])
+                 for k in ("yaw", "pitch", "roll")}
     hyst = {side: TriStateEye(cfg["eyes"]) for side in ("left", "right")}  # keyed by USER side
     calib = Calibration(cfg["calibration"]["frames"])
 
@@ -200,8 +200,8 @@ def main() -> int:
                     calib.feed(obs.blend)
                 else:
                     values = calib.apply(obs.blend)
-                    smoothed = {k: emas[k].update(v) for k, v in values.items()}
-                    head = {k: head_emas[k].update(getattr(obs, k)) for k in head_emas}
+                    smoothed = {k: emas[k].update(v, now) for k, v in values.items()}
+                    head = {k: head_emas[k].update(getattr(obs, k), now) for k in head_emas}
             else:
                 lost_for = (now - last_seen) * 1000
                 if lost_for > cfg["lost_face"]["hold_ms"]:

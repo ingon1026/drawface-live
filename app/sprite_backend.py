@@ -80,6 +80,36 @@ class Ema:
         return self.value
 
 
+class OneEuro:
+    """Speed-adaptive lowpass (Casiez et al. 2012): unlike a fixed-alpha EMA it
+    smooths hard at rest (low jitter) yet follows fast motion almost without lag
+    — the cutoff rises with the signal's own speed."""
+
+    def __init__(self, min_cutoff: float, beta: float, d_cutoff: float = 1.0) -> None:
+        self.min_cutoff, self.beta, self.d_cutoff = min_cutoff, beta, d_cutoff
+        self._x: float | None = None
+        self._dx = 0.0
+        self._t: float | None = None
+
+    @staticmethod
+    def _alpha(cutoff: float, dt: float) -> float:
+        tau = 1.0 / (2.0 * np.pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+
+    def update(self, x: float, t: float) -> float:
+        """t in seconds, strictly increasing; same-or-earlier t resets the state."""
+        if self._t is None or t <= self._t:
+            self._x, self._dx, self._t = x, 0.0, t
+            return x
+        dt = t - self._t
+        self._t = t
+        a_d = self._alpha(self.d_cutoff, dt)
+        self._dx = a_d * ((x - self._x) / dt) + (1 - a_d) * self._dx
+        a = self._alpha(self.min_cutoff + self.beta * abs(self._dx), dt)
+        self._x = a * x + (1 - a) * self._x
+        return self._x
+
+
 def gaze_to_shift(gaze_left: float, gaze_up: float, range_px: int, mirror: bool) -> tuple[int, int]:
     """Map user-perspective gaze (each in [-1, 1]) to a pupil pixel shift.
 

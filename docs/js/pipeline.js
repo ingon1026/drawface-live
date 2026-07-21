@@ -18,6 +18,85 @@ function median(values) {
   return n % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+/** Speed-adaptive lowpass (Casiez et al. 2012): smooth at rest, near-lagless on
+ * fast motion — the cutoff rises with the signal's own speed. Twin of
+ * app/sprite_backend.OneEuro. t in seconds, strictly increasing. */
+export class OneEuro {
+  constructor(minCutoff, beta, dCutoff = 1.0) {
+    this.minCutoff = minCutoff;
+    this.beta = beta;
+    this.dCutoff = dCutoff;
+    this.x = null;
+    this.dx = 0;
+    this.t = null;
+  }
+
+  static alpha(cutoff, dt) {
+    const tau = 1 / (2 * Math.PI * cutoff);
+    return 1 / (1 + tau / dt);
+  }
+
+  update(x, t) {
+    if (this.t === null || t <= this.t) {
+      this.x = x;
+      this.dx = 0;
+      this.t = t;
+      return x;
+    }
+    const dt = t - this.t;
+    this.t = t;
+    const aD = OneEuro.alpha(this.dCutoff, dt);
+    this.dx = aD * ((x - this.x) / dt) + (1 - aD) * this.dx;
+    const a = OneEuro.alpha(this.minCutoff + this.beta * Math.abs(this.dx), dt);
+    this.x = a * x + (1 - a) * this.x;
+    return this.x;
+  }
+}
+
+/** Keeps the character alive when the face is still or lost: a subtle breathing
+ * bob on the pitch channel plus an occasional scripted blink when no real blink
+ * has happened for a while. Twin of app/warp_live.IdleMotion. */
+export class IdleMotion {
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.lastBlink = 0;
+    this.envStart = -1;
+    this.nextAt = 0;
+  }
+
+  apply(ch, nowMs, realBlink) {
+    const c = this.cfg;
+    ch.pitch += c.breathAmp * Math.sin((2 * Math.PI * nowMs) / (c.breathPeriodS * 1000));
+    if (realBlink > 0.3) {
+      this.lastBlink = nowMs;
+      this.envStart = -1;
+      return ch;
+    }
+    if (!this.nextAt) this.nextAt = nowMs + this.interval();
+    if (this.envStart < 0 && nowMs >= this.nextAt && nowMs - this.lastBlink >= c.blinkMinS * 1000) {
+      this.envStart = nowMs;
+      this.lastBlink = nowMs;
+      this.nextAt = nowMs + this.interval();
+    }
+    if (this.envStart >= 0) {
+      const t = (nowMs - this.envStart) / c.blinkMs;
+      if (t >= 1) {
+        this.envStart = -1;
+      } else {
+        const env = 1 - Math.abs(2 * t - 1); // close-open triangle
+        ch.blinkL = Math.max(ch.blinkL, env);
+        ch.blinkR = Math.max(ch.blinkR, env);
+      }
+    }
+    return ch;
+  }
+
+  interval() {
+    const c = this.cfg;
+    return (c.blinkMinS + Math.random() * (c.blinkMaxS - c.blinkMinS)) * 1000;
+  }
+}
+
 export class Ema {
   constructor(alpha) {
     this.alpha = alpha;

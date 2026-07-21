@@ -18,6 +18,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
+import random
 import sys
 import time
 
@@ -30,7 +32,7 @@ from app.camera import LatestFrameCamera
 from app.config import load_config
 from app.face_tracker import FaceTracker, Observation
 from app.main import SMOOTH_KEYS, Calibration, TkDisplay, draw_tracking_viz
-from app.sprite_backend import Ema, SpriteCharacter, apply_head_transform, eye_key_for_user_side
+from app.sprite_backend import OneEuro, SpriteCharacter, apply_head_transform, eye_key_for_user_side
 from app.warp_rig import WarpRig, landmarks_from_boxes
 
 log = logging.getLogger("warp_live")
@@ -38,6 +40,48 @@ log = logging.getLogger("warp_live")
 # Calibrated blendshapes rarely reach 1.0; gains map a comfortable expression
 # to full channel travel. Overridable via the optional `warp:` config section.
 DEFAULT_GAINS = {"blink_gain": 2.0, "smile_gain": 2.0, "jaw_gain": 1.6, "head_parallax": 1.0}
+DEFAULT_IDLE = {"breath_period_s": 3.6, "breath_amp": 0.05,
+                "blink_min_s": 4.0, "blink_max_s": 7.0, "blink_ms": 260}
+
+
+class IdleMotion:
+    """Keeps the character alive when the face is still or lost: a subtle
+    breathing bob on the pitch channel plus an occasional scripted blink when no
+    real blink has happened for a while. Twin of docs/js/pipeline.IdleMotion."""
+
+    def __init__(self, cfg: dict) -> None:
+        self.cfg = cfg
+        self._last_blink = 0.0
+        self._env_start = -1.0
+        self._next_at = 0.0
+
+    def apply(self, ch: dict[str, float], now_ms: float, real_blink: float) -> dict[str, float]:
+        c = self.cfg
+        ch["pitch"] += c["breath_amp"] * math.sin(2 * math.pi * now_ms / (c["breath_period_s"] * 1000))
+        if real_blink > 0.3:
+            self._last_blink = now_ms
+            self._env_start = -1.0
+            return ch
+        if not self._next_at:
+            self._next_at = now_ms + self._interval()
+        if (self._env_start < 0 and now_ms >= self._next_at
+                and now_ms - self._last_blink >= c["blink_min_s"] * 1000):
+            self._env_start = now_ms
+            self._last_blink = now_ms
+            self._next_at = now_ms + self._interval()
+        if self._env_start >= 0:
+            t = (now_ms - self._env_start) / c["blink_ms"]
+            if t >= 1:
+                self._env_start = -1.0
+            else:
+                env = 1 - abs(2 * t - 1)  # close-open triangle
+                ch["blink_l"] = max(ch["blink_l"], env)
+                ch["blink_r"] = max(ch["blink_r"], env)
+        return ch
+
+    def _interval(self) -> float:
+        c = self.cfg
+        return random.uniform(c["blink_min_s"], c["blink_max_s"]) * 1000
 
 
 def channels(smoothed: dict[str, float], head: dict[str, float], mirror: bool,
@@ -140,11 +184,12 @@ def main() -> int:
         tracker.close()
         return 1
 
-    blink_alpha = cfg["smoothing"].get("blink_alpha", cfg["smoothing"]["blend_alpha"])
-    emas = {k: Ema(blink_alpha if k.startswith("eyeBlink") else cfg["smoothing"]["blend_alpha"])
+    emas = {k: OneEuro(cfg["smoothing"]["min_cutoff"], cfg["smoothing"]["beta"])
             for k in SMOOTH_KEYS}
-    head_emas = {k: Ema(cfg["smoothing"]["head_alpha"]) for k in ("yaw", "pitch", "roll")}
+    head_emas = {k: OneEuro(cfg["smoothing"]["head_min_cutoff"], cfg["smoothing"]["head_beta"])
+                 for k in ("yaw", "pitch", "roll")}
     calib = Calibration(cfg["calibration"]["frames"])
+    idle = IdleMotion({**DEFAULT_IDLE, **cfg.get("idle", {})})
     smoothed = {k: 0.0 for k in SMOOTH_KEYS}
     head = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
 
@@ -157,9 +202,11 @@ def main() -> int:
                 calib.feed(obs.blend)
             else:
                 values = calib.apply(obs.blend)
-                smoothed = {k: emas[k].update(v) for k, v in values.items()}
-                head = {k: head_emas[k].update(getattr(obs, k)) for k in head_emas}
+                smoothed = {k: emas[k].update(v, ts_ms / 1000.0) for k, v in values.items()}
+                head = {k: head_emas[k].update(getattr(obs, k), ts_ms / 1000.0) for k in head_emas}
         ch = channels(smoothed, head, mirror, gains, cfg["head"])
+        if not calib.active:
+            idle.apply(ch, ts_ms, max(smoothed["eyeBlinkLeft"], smoothed["eyeBlinkRight"]))
         out = rig.render(**ch)
         out = apply_head_transform(out, head["yaw"], head["pitch"], head["roll"], cfg["head"])
         if not args.no_debug_overlay:

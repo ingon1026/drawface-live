@@ -2,7 +2,12 @@
 export const CONFIG = {
   camera: { width: 640, height: 480 },
   control: { mirror: true },
-  smoothing: { blendAlpha: 0.45, blinkAlpha: 0.70, headAlpha: 0.30 },
+  // Live loop uses the One Euro filter; the fixed alphas remain for reference
+  // parity with offline python tools.
+  smoothing: {
+    blendAlpha: 0.45, blinkAlpha: 0.70, headAlpha: 0.30,
+    minCutoff: 1.2, beta: 2.0, headMinCutoff: 1.0, headBeta: 0.02,
+  },
   eyes: {
     closeThreshold: 0.38, openThreshold: 0.25,
     halfCloseThreshold: 0.20, halfOpenThreshold: 0.12,
@@ -15,6 +20,7 @@ export const CONFIG = {
   lostFace: { holdMs: 300, decayMs: 600 },
   calibration: { frames: 30 },
   warp: { blinkGain: 2.0, smileGain: 2.0, jawGain: 1.6, headParallax: 1.0 },
+  idle: { breathPeriodS: 3.6, breathAmp: 0.05, blinkMinS: 4.0, blinkMaxS: 7.0, blinkMs: 260 },
 };
 
 export const CANVAS = 512;

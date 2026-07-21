@@ -62,8 +62,8 @@ function alphaBox(canvas) {
   return b && [b[0], b[1], b[2] - 1, b[3] - 1]; // exclusive max -> inclusive
 }
 
-// Straight port of warp_rig.landmarks_from_boxes.
-function landmarksFromBoxes(eyeL, eyeR, mouth, w, h) {
+// Straight port of warp_rig.landmarks_from_boxes. Exported for tests.
+export function landmarksFromBoxes(eyeL, eyeR, mouth, w, h) {
   const lm = Array.from({ length: 478 }, () => [0, 0]);
   const ring = (ids, cx, cy, rx, ry, upper) => {
     ids.forEach((i, k) => {
@@ -181,11 +181,44 @@ function sampleColors(neutral, lm) {
   return { eyes, mouthInk };
 }
 
+// Detection on stylized faces can "succeed" with sloppy geometry (tiny or
+// offset eye rings). The user's clicked boxes are ground truth: stored
+// landmarks are only trusted when each feature ring actually sits on its box.
+function landmarksAgreeWithBoxes(lm, [eyeL, eyeR, mouth]) {
+  const centroid = (ids) => ids.reduce(
+    (a, i) => [a[0] + lm[i][0] / ids.length, a[1] + lm[i][1] / ids.length], [0, 0]);
+  const ringW = (ids) => {
+    const xs = ids.map((i) => lm[i][0]);
+    return Math.max(...xs) - Math.min(...xs);
+  };
+  const fits = (ids, box) => {
+    const [x, y] = centroid(ids);
+    const bw = box[2] - box[0], bh = box[3] - box[1];
+    // ring centered on the clicked feature (within a quarter box) and not tiny
+    return Math.abs(x - (box[0] + box[2]) / 2) <= Math.max(6, bw * 0.25)
+      && Math.abs(y - (box[1] + box[3]) / 2) <= Math.max(6, bh * 0.25)
+      && ringW(ids) >= bw * 0.45;
+  };
+  return fits([...L_EYE_TOP, ...L_EYE_BOT], eyeL)
+    && fits([...R_EYE_TOP, ...R_EYE_BOT], eyeR)
+    && fits([...LIP_TOP, ...LIP_BOT, ...MOUTH_CORNERS], mouth);
+}
+
 export function buildWarpRig(char) {
+  const neutral = composeCharacter(char, "open", "open", "closed");
   const boxes = [char.eyes.L.open, char.eyes.R.open, char.mouths.closed].map(alphaBox);
   if (boxes.some((b) => !b)) throw new Error("onboarding sprites lack alpha bounds");
-  const neutral = composeCharacter(char, "open", "open", "closed");
-  const lm = landmarksFromBoxes(boxes[0], boxes[1], boxes[2], CANVAS, CANVAS);
+  // Detectable drawings carry their real 478-point geometry from onboarding —
+  // finer lid/lip curves than the box-synthesized rings — but only when it
+  // agrees with where the user actually placed the features.
+  const stored = char.manifest?.landmarks;
+  let lm = null;
+  if (Array.isArray(stored) && stored.length === 478) {
+    const cand = stored.map(([x, y]) => [x * CANVAS, y * CANVAS]);
+    if (landmarksAgreeWithBoxes(cand, boxes)) lm = cand;
+  }
+  const realGeometry = !!lm;
+  if (!lm) lm = landmarksFromBoxes(boxes[0], boxes[1], boxes[2], CANVAS, CANVAS);
 
   const vid = new Map(FEATURE.map((i, k) => [i, k]));
   const verts = FEATURE.map((i) => [...lm[i]]);
@@ -210,7 +243,8 @@ export function buildWarpRig(char) {
   const add = (f, i, dx, dy) => { const v = vid.get(i); f[v * 2] += dx; f[v * 2 + 1] += dy; };
   const s = scale;
 
-  for (const [f, top, bot] of [[F.blinkL, L_EYE_TOP, L_EYE_BOT], [F.blinkR, R_EYE_TOP, R_EYE_BOT]]) {
+  for (const [f, top, bot, brow] of [[F.blinkL, L_EYE_TOP, L_EYE_BOT, L_BROW],
+                                     [F.blinkR, R_EYE_TOP, R_EYE_BOT, R_BROW]]) {
     const ringPts = [...top, ...bot].map((i) => lm[i]);
     const cx = ringPts.reduce((a, p) => a + p[0], 0) / ringPts.length;
     const halfW = Math.max(1, (Math.max(...ringPts.map((p) => p[0])) - Math.min(...ringPts.map((p) => p[0]))) / 2);
@@ -218,7 +252,9 @@ export function buildWarpRig(char) {
     const taper = (x) => Math.max(0.1, 1 - Math.min(1, Math.abs(x - cx) / halfW) ** 2);
     for (const i of top) add(f, i, 0, BLINK_MAX * taper(lm[i][0]) * (targetY - lm[i][1]));
     for (const i of bot) add(f, i, 0, -BLINK_MAX * taper(lm[i][0]) * 1.5 * s);
-    // no brow follow on box rigs (a synthesized brow spot can sit on any stroke)
+    // Brows dip with a blink only when we know where the brows really are —
+    // a box rig's synthesized brow spot can sit on any stroke (head outline).
+    if (realGeometry) for (const i of brow) add(f, i, 0, 4 * s);
   }
   MOUTH_CORNERS.forEach((i, k) => add(F.smile, i, (k ? 1 : -1) * 7 * s, -9 * s));
   for (const i of LIP_TOP) add(F.smile, i, 0, -2 * s);

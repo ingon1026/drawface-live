@@ -16,6 +16,7 @@ Offline twin (no camera, no window — verification and A/B clips):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import time
@@ -36,21 +37,29 @@ log = logging.getLogger("warp_live")
 
 # Calibrated blendshapes rarely reach 1.0; gains map a comfortable expression
 # to full channel travel. Overridable via the optional `warp:` config section.
-DEFAULT_GAINS = {"blink_gain": 2.0, "smile_gain": 2.0, "jaw_gain": 1.6}
+DEFAULT_GAINS = {"blink_gain": 2.0, "smile_gain": 2.0, "jaw_gain": 1.6, "head_parallax": 1.0}
 
 
-def channels(smoothed: dict[str, float], mirror: bool, gains: dict[str, float]) -> dict[str, float]:
-    """Map calibrated+smoothed blendshapes to rig channels (rig L = viewer-left)."""
+def channels(smoothed: dict[str, float], head: dict[str, float], mirror: bool,
+             gains: dict[str, float], head_cfg: dict) -> dict[str, float]:
+    """Map calibrated blendshapes + head pose to rig channels (rig L = viewer-left).
+
+    Mesh parallax reuses the canvas-shift gains for direction/normalization, so
+    nose/features lead exactly where the whole-canvas motion goes.
+    """
     blink = {}
     for user_side in ("left", "right"):
         rig_side = eye_key_for_user_side(user_side, mirror)
         blink[rig_side] = min(1.0, smoothed[f"eyeBlink{user_side.capitalize()}"] * gains["blink_gain"])
     smile = (smoothed["mouthSmileLeft"] + smoothed["mouthSmileRight"]) / 2
+    par = gains["head_parallax"]
     return {
         "blink_l": blink["L"],
         "blink_r": blink["R"],
         "smile": min(1.0, smile * gains["smile_gain"]),
         "jaw": min(1.0, smoothed["jawOpen"] * gains["jaw_gain"]),
+        "yaw": head["yaw"] * head_cfg["yaw_gain_px"] / head_cfg["max_shift_px"] * par,
+        "pitch": head["pitch"] * head_cfg["pitch_gain_px"] / head_cfg["max_shift_px"] * par,
     }
 
 
@@ -87,7 +96,15 @@ def rig_from_character(char_dir: str) -> WarpRig | None:
     neutral = SpriteCharacter(str(d)).render("open", "open", "closed", {}, (0, 0))
     h, w = neutral.shape[:2]
     lm = landmarks_from_boxes(boxes[0], boxes[1], boxes[2], (w, h))
-    return WarpRig(neutral, lm, brow_follow=False)
+    # Per-character mouth style (same source of truth as the sprite pipeline).
+    mouth_fill = None
+    mf_path = d / "manifest.json"
+    if mf_path.exists():
+        fill = json.loads(mf_path.read_text(encoding="utf-8")).get("mouthStyle", {}).get("fill")
+        if isinstance(fill, str) and len(fill) == 7:
+            r, g, b = (int(fill[i:i + 2], 16) for i in (1, 3, 5))
+            mouth_fill = (b, g, r)
+    return WarpRig(neutral, lm, brow_follow=False, mouth_fill=mouth_fill)
 
 
 def main() -> int:
@@ -142,14 +159,8 @@ def main() -> int:
                 values = calib.apply(obs.blend)
                 smoothed = {k: emas[k].update(v) for k, v in values.items()}
                 head = {k: head_emas[k].update(getattr(obs, k)) for k in head_emas}
-        ch = channels(smoothed, mirror, gains)
-        # Mesh parallax reuses the canvas-shift gains for direction/normalization,
-        # so nose/features lead the whole-canvas motion (2.5D turn).
-        hc = cfg["head"]
-        par = gains.get("head_parallax", 1.0)
-        out = rig.render(**ch,
-                         yaw=head["yaw"] * hc["yaw_gain_px"] / hc["max_shift_px"] * par,
-                         pitch=head["pitch"] * hc["pitch_gain_px"] / hc["max_shift_px"] * par)
+        ch = channels(smoothed, head, mirror, gains, cfg["head"])
+        out = rig.render(**ch)
         out = apply_head_transform(out, head["yaw"], head["pitch"], head["roll"], cfg["head"])
         if not args.no_debug_overlay:
             face = "face:OK" if obs is not None else "face:LOST"

@@ -77,10 +77,14 @@ class WarpRig:
     """Warp a single character image with MediaPipe-landmark control points."""
 
     def __init__(self, image_bgr: np.ndarray, landmarks_px: np.ndarray,
-                 border_steps: int = 9, brow_follow: bool = True) -> None:
+                 border_steps: int = 9, brow_follow: bool = True,
+                 mouth_fill: tuple[int, int, int] | None = None) -> None:
         # brow_follow: brows dip with a blink. Disable for synthesized (box-based)
         # landmarks — their "brow" spots may sit on arbitrary strokes (head outline).
+        # mouth_fill: per-character interior color (BGR) — same source of truth as
+        # the sprite pipeline's manifest mouthStyle; engine default when absent.
         self._brow_follow = brow_follow
+        self._mouth_fill = mouth_fill or MOUTH_FILL
         self._img = image_bgr
         h, w = image_bgr.shape[:2]
         self._lm = landmarks_px[:, :2].astype(np.float32)
@@ -252,7 +256,7 @@ class WarpRig:
         return np.vstack([t[np.argsort(t[:, 0])], b[np.argsort(b[:, 0])[::-1]]])
 
     def _blend_poly(self, out: np.ndarray, poly: np.ndarray, alpha: float,
-                    fill: tuple, line: tuple | None, line_pts: np.ndarray | None,
+                    fill: tuple, line: tuple, line_pts: np.ndarray,
                     line_width: int) -> None:
         if alpha <= 0.02:
             return
@@ -264,9 +268,8 @@ class WarpRig:
         roi = out[y:y2, x:x2]
         layer = roi.copy()
         cv2.fillPoly(layer, [(poly - [x, y]).astype(np.int32)], fill, lineType=cv2.LINE_AA)
-        if line is not None and line_pts is not None:
-            cv2.polylines(layer, [(line_pts - [x, y]).astype(np.int32)], False, line,
-                          line_width, lineType=cv2.LINE_AA)
+        cv2.polylines(layer, [(line_pts - [x, y]).astype(np.int32)], False, line,
+                      line_width, lineType=cv2.LINE_AA)
         cv2.addWeighted(layer, alpha, roi, 1.0 - alpha, 0.0, dst=roi)
 
     def _draw_eye_seal(self, out: np.ndarray, verts: np.ndarray,
@@ -290,7 +293,7 @@ class WarpRig:
         if poly[:, 1].max() - poly[:, 1].min() < 3.0 * self._scale:
             return
         width = max(2, int(3.0 * self._scale))
-        self._blend_poly(out, poly, alpha, MOUTH_FILL, self._mouth_ink,
+        self._blend_poly(out, poly, alpha, self._mouth_fill, self._mouth_ink,
                          np.vstack([poly, poly[:1]]), width)
 
 

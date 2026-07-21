@@ -16,6 +16,23 @@ export function getData(canvas) {
 }
 
 /** Wrap a Uint8ClampedArray RGBA buffer as a canvas. */
+/** [x0,y0,x1,y1] with x1,y1 exclusive (max+1), or null when fully transparent. */
+export function bboxAlpha(imgData) {
+  const { data, width: w, height: h } = imgData;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 0) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  return x1 < 0 ? null : [x0, y0, x1 + 1, y1 + 1];
+}
+
 export function canvasFromData(buf, w, h) {
   const c = newCanvas(w, h);
   c.getContext("2d").putImageData(new ImageData(buf, w, h), 0, 0);

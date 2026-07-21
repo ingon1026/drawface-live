@@ -10,7 +10,7 @@
 // response is baked straight into each field at build time.
 import Delaunator from "./delaunator.js";
 import { CANVAS } from "./config.js";
-import { newCanvas } from "./imageops.js";
+import { newCanvas, getData, hexToRgb, bboxAlpha } from "./imageops.js";
 import { composeCharacter } from "./compositor.js";
 
 // MediaPipe 478-landmark topology (viewer-left = image-left) — keep in sync
@@ -58,19 +58,8 @@ const smoothstep = (v, [a, b]) => {
 };
 
 function alphaBox(canvas) {
-  const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
-  let x1 = Infinity, y1 = Infinity, x2 = -1, y2 = -1;
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      if (data[(y * canvas.width + x) * 4 + 3] > 0) {
-        if (x < x1) x1 = x;
-        if (x > x2) x2 = x;
-        if (y < y1) y1 = y;
-        if (y > y2) y2 = y;
-      }
-    }
-  }
-  return x2 < 0 ? null : [x1, y1, x2, y2];
+  const b = bboxAlpha(getData(canvas));
+  return b && [b[0], b[1], b[2] - 1, b[3] - 1]; // exclusive max -> inclusive
 }
 
 // Straight port of warp_rig.landmarks_from_boxes.
@@ -149,7 +138,7 @@ function landmarksFromBoxes(eyeL, eyeR, mouth, w, h) {
 }
 
 function sampleColors(neutral, lm) {
-  const { data } = neutral.getContext("2d").getImageData(0, 0, CANVAS, CANVAS);
+  const { data } = getData(neutral);
   const patch = (x1, y1, x2, y2) => {
     const px = [];
     [x1, x2] = [Math.round(clamp(Math.min(x1, x2), 0, CANVAS - 1)), Math.round(clamp(Math.max(x1, x2), 0, CANVAS - 1))];
@@ -273,17 +262,22 @@ export function buildWarpRig(char) {
   }
 
   const rings = (ids) => ids.map((i) => vid.get(i));
+  const out = newCanvas(CANVAS, CANVAS);
   return {
     neutral, verts, tris, scale,
     fields: F,
     colors: sampleColors(neutral, lm),
+    // per-character mouth style wins over the engine default (single source of
+    // truth shared with the sprite/derive pipeline)
+    mouthFill: char.manifest?.mouthStyle?.fill ? hexToRgb(char.manifest.mouthStyle.fill) : MOUTH_FILL,
+    ctx: out.getContext("2d"),
     ringIds: {
       sealL: [rings(L_EYE_TOP), rings(L_EYE_BOT)],
       sealR: [rings(R_EYE_TOP), rings(R_EYE_BOT)],
       lipTop: rings([...LIP_TOP, MOUTH_CORNERS[0]]),
       lipBot: rings([...LIP_BOT, MOUTH_CORNERS[1]]),
     },
-    out: newCanvas(CANVAS, CANVAS),
+    out,
     _warped: new Float32Array(verts.length * 2),
   };
 }
@@ -349,27 +343,24 @@ export function renderWarp(rig, ch) {
     jawBow: clamp(ch.jaw, 0, 1) * (1 - wOpen), jawSplit: clamp(ch.jaw, 0, 1) * wOpen,
     yaw: clamp(ch.yaw, -1, 1), pitch: clamp(ch.pitch, -1, 1),
   };
-  const { verts, tris, fields } = rig;
+  const { verts, tris, fields, ctx } = rig;
   const wv = rig._warped;
-  let maxDisp = 0;
+  // Hoist the frame's active channels out of the per-vertex loop.
+  const active = [];
+  for (const name in fields) { if (k[name]) active.push([k[name], fields[name]]); }
   for (let i = 0; i < verts.length; i++) {
     let dx = 0, dy = 0;
-    for (const name in fields) {
-      const kv = k[name];
-      if (!kv) continue;
-      dx += kv * fields[name][i * 2];
-      dy += kv * fields[name][i * 2 + 1];
+    for (const [kv, f] of active) {
+      dx += kv * f[i * 2];
+      dy += kv * f[i * 2 + 1];
     }
     wv[i * 2] = verts[i][0] + dx;
     wv[i * 2 + 1] = verts[i][1] + dy;
-    const m = Math.max(Math.abs(dx), Math.abs(dy));
-    if (m > maxDisp) maxDisp = m;
   }
 
-  const ctx = rig.out.getContext("2d");
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(rig.neutral, 0, 0);
-  if (maxDisp >= 0.25) {
+  if (active.length) {
     for (let t = 0; t < tris.length; t += 3) {
       const ia = tris[t], ib = tris[t + 1], ic = tris[t + 2];
       const src = [verts[ia], verts[ib], verts[ic]];
@@ -402,7 +393,7 @@ export function renderWarp(rig, ch) {
     const poly = [...top, ...sortedX(rig.ringIds.lipBot).reverse()];
     const heights = poly.map((p) => p[1]);
     if (Math.max(...heights) - Math.min(...heights) >= 3 * rig.scale) {
-      fillRingPoly(ctx, poly, alphaMouth, MOUTH_FILL, [...poly, poly[0]],
+      fillRingPoly(ctx, poly, alphaMouth, rig.mouthFill, [...poly, poly[0]],
                    rig.colors.mouthInk, Math.max(2, 3 * rig.scale));
     }
   }

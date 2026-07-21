@@ -3,26 +3,9 @@
 // overwrites an existing canvas key (hand-made sprites win). Pixel work is on
 // typed arrays; canvas API only for whole-image ops (arc/ellipse draw, resize).
 import { CANVAS, DERIVE } from "./config.js";
-import { newCanvas, getData, canvasFromData, hexToRgb, median, rad, bankersRound } from "./imageops.js";
+import { newCanvas, getData, canvasFromData, hexToRgb, median, rad, bankersRound, bboxAlpha } from "./imageops.js";
 
 const N = CANVAS * CANVAS;
-
-/** [x0,y0,x1,y1] with x1,y1 exclusive (max+1), or null when fully transparent. */
-function bboxAlpha(imgData) {
-  const { data, width: w, height: h } = imgData;
-  let x0 = w, y0 = h, x1 = -1, y1 = -1;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (data[(y * w + x) * 4 + 3] > 0) {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
-      }
-    }
-  }
-  return x1 < 0 ? null : [x0, y0, x1 + 1, y1 + 1];
-}
 
 /** Port of make_procedural_closed: lower-half ellipse arc from manifest params. */
 function makeProceduralClosed(manifest) {

@@ -22,10 +22,21 @@ export function saveCharacter(name, manifest, canvases) {
   const images = {};
   for (const [file, canvas] of Object.entries(canvases)) {
     if (manifest.proceduralMouth && !CORE_FILES.has(file)) continue;
-    images[file] = canvas.toDataURL("image/png");
+    // source.png 는 fitTo 가 불투명 배경으로 채운 hi-res warp 텍스처(알파 없음, 최대 1024px)라
+    // PNG 로 저장하면 수 MB → localStorage quota 초과로 저장이 통째로 실패한다. 알파가 없으니
+    // JPEG 로 압축(해상도는 유지). 알파가 필요한 나머지 스프라이트만 PNG.
+    images[file] = file === "source.png"
+      ? canvas.toDataURL("image/jpeg", 0.85)
+      : canvas.toDataURL("image/png");
   }
   all[name] = { name, manifest, images };
-  localStorage.setItem(KEY, JSON.stringify(all));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all));
+  } catch (e) {
+    if (e.name === "QuotaExceededError")
+      throw new Error("브라우저 저장 공간이 가득 찼어요. 기존 캐릭터를 삭제하고 다시 시도하세요.");
+    throw e;
+  }
 }
 
 export function deleteCharacter(name) {

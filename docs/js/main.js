@@ -361,6 +361,34 @@ function exampleDrawing() {
   return c;
 }
 
+// talking-drawing-avatar 의 기본 캐릭터(소년)를 이식한 프리셋 — 파츠가 이미 이 저장 포맷
+// (인페인트 base + 눈 오버레이 + 손제작 비짐 입세트)이라 fetch 해서 그대로 저장한다.
+const BOY_FILES = ["base", "eye_L_open", "eye_R_open", "eye_L_closed", "eye_R_closed",
+  "mouth_closed", "mouth_A", "mouth_E", "mouth_I", "mouth_O", "mouth_U"];
+$("boyBtn").onclick = async () => {
+  try {
+    $("boyBtn").disabled = true;
+    const manifest = await (await fetch("characters/boy/manifest.json")).json();
+    const canvases = {};
+    await Promise.all(BOY_FILES.map(async (n) => {
+      const img = new Image();
+      img.src = `characters/boy/${n}.png`;
+      await img.decode();
+      const c = newCanvas(CANVAS, CANVAS);
+      c.getContext("2d").drawImage(img, 0, 0);
+      canvases[`${n}.png`] = c;
+    }));
+    deriveAll(canvases, manifest);   // half-eye 등 파생 스프라이트 (기존 키는 보존)
+    saveCharacter(manifest.name, manifest, canvases);
+    refreshList(manifest.name);
+    status("소년 캐릭터를 불러왔습니다 — 시작을 눌러 웹캠 표정을 따라 해보세요");
+  } catch (err) {
+    status(`소년 캐릭터 로드 실패: ${err.message}`);
+  } finally {
+    $("boyBtn").disabled = false;
+  }
+};
+
 $("exampleBtn").onclick = () => {
   try {
     const name = "예시 캐릭터";

@@ -19,7 +19,9 @@ export const CONFIG = {
   head: { yawGainPx: -1.6, pitchGainPx: 1.2, rollGain: 1.0, maxShiftPx: 48, maxRollDeg: 20 },
   lostFace: { holdMs: 300, decayMs: 600 },
   calibration: { frames: 30 },
-  warp: { blinkGain: 2.0, smileGain: 2.0, jawGain: 1.6, headParallax: 1.0 },
+  // jawGain 2.2: MediaPipe jawOpen 은 말하기 수준에서 0.1~0.25 라 1.6 으론 워프 램프를 못 넘어
+  // 크게 쩍 벌려야만 입이 열렸다 — 보통 벌림에도 반응하게 상향 (warp.js JAW_RAMP 하향과 세트).
+  warp: { blinkGain: 2.0, smileGain: 2.0, jawGain: 2.2, headParallax: 1.0 },
   idle: { breathPeriodS: 3.6, breathAmp: 0.05, blinkMinS: 4.0, blinkMaxS: 7.0, blinkMs: 260 },
 };
 

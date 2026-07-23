@@ -1,13 +1,13 @@
 {
   "name": "소년",
-  "pupilRange": 0,
-  "browRange": 0,
+  "pupilRange": 8,
+  "browRange": 12,
   "jawDrop": 9,
   "mouthCenter": [
     256,
     336
   ],
-  "proceduralMouth": false,
+  "proceduralMouth": true,
   "mouthStyle": {
     "line": "#4a3626",
     "fill": "#a2453b",

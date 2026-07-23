@@ -28,6 +28,10 @@
 
 추적·합성 전부 브라우저 안에서 실행되고, 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
 
+3D 미러링(NVIDIA A2F mark 헤드가 웹캠 표정을 따라함)은 자매 리포
+[talking-drawing-avatar](https://github.com/ingon1026/talking-drawing-avatar)의 로컬 3D 스튜디오에서 —
+헤드 모델이 NVIDIA 파생물이라 공개 배포 대신 로컬 전용으로 제공됩니다.
+
 ```mermaid
 flowchart LR
     A[Webcam] --> B["MediaPipe Face Landmarker<br/>랜드마크 478점 · blendshape 52채널"]

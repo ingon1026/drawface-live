@@ -63,25 +63,35 @@ function alphaBox(canvas) {
   return b && [b[0], b[1], b[2] - 1, b[3] - 1]; // exclusive max -> inclusive
 }
 
-// 원본(src)의 입 박스 안이 어두우면(입 안이 노출된 벌린 입) true. 다문 입은 입술 선뿐이라 대부분 피부색.
-// box 는 512 좌표 → src 해상도로 스케일해 검사. 벌린 입 원본을 warp 기준으로 쓰면 원본 입과 하이브리드
+// 원본(src)의 입이 벌어져 있으면 true. 벌린 입 원본을 warp 기준으로 쓰면 원본 입과 하이브리드
 // 입 폴리곤이 겹쳐 입이 둘로 보이므로, 이 판정으로 그런 캐릭터만 입 지운 base 를 기준으로 돌린다.
-function mouthLooksOpen(src, box512, canvasSize) {
-  if (!box512) return false;
+// 판정: 어두운 픽셀(입 안)이 **세로로 넓게** 분포하는가. 다문 입은 어두운 획이 얇은 가로 띠
+// (세로 폭 몇 px)에 몰리고, 벌린 입은 안쪽 그늘이 박스 높이의 큰 부분을 차지한다 — 흰 이빨이
+// 사이에 껴도 첫/마지막 어두운 행 스팬으로 잡히므로 강건하다. closedBox512(다문 입 스프라이트의
+// alpha bbox, 얇은 선)는 중심·폭만 취하고 검사 영역은 폭 기준 정사각형 근방으로 넓힌다.
+function mouthLooksOpen(src, closedBox512, canvasSize) {
+  if (!closedBox512) return false;
+  const [bx0, by0, bx1, by1] = closedBox512;
+  const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2, halfW = Math.max(8, (bx1 - bx0) / 2);
   const sc = src.width / canvasSize;
-  const x0 = Math.max(0, Math.round(box512[0] * sc)), y0 = Math.max(0, Math.round(box512[1] * sc));
-  const x1 = Math.min(src.width, Math.round((box512[2] + 1) * sc));
-  const y1 = Math.min(src.height, Math.round((box512[3] + 1) * sc));
+  const x0 = Math.max(0, Math.round((cx - halfW) * sc)), x1 = Math.min(src.width, Math.round((cx + halfW) * sc));
+  const y0 = Math.max(0, Math.round((cy - 0.9 * halfW) * sc)), y1 = Math.min(src.height, Math.round((cy + 0.9 * halfW) * sc));
   const w = x1 - x0, h = y1 - y0;
-  if (w < 2 || h < 2) return false;
+  if (w < 4 || h < 4) return false;
   const d = src.getContext("2d").getImageData(x0, y0, w, h).data;
-  let dark = 0, n = 0;
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] < 128) continue;                                   // 투명 픽셀 제외
-    n++;
-    if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 90) dark++;  // 어두움 = 입 안
+  let first = -1, last = -1, dark = 0, total = 0;
+  for (let r = 0; r < h; r++) {
+    let rowDark = 0;
+    for (let c = 0; c < w; c++) {
+      const i = (r * w + c) * 4;
+      if (d[i + 3] < 128) continue;                                       // 투명 제외
+      total++;
+      if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 100) { rowDark++; dark++; }
+    }
+    if (rowDark > w * 0.08) { if (first < 0) first = r; last = r; }       // 유의미하게 어두운 행
   }
-  return n > 0 && dark / n > 0.15;   // 입 박스의 15%+ 가 어두우면 벌린 입
+  if (total === 0 || dark / total < 0.04) return false;                   // 어두운 픽셀 자체가 희박
+  return (last - first + 1) / h > 0.28;                                   // 세로 스팬 28%+ = 벌린 입
 }
 
 // Straight port of warp_rig.landmarks_from_boxes. Exported for tests.

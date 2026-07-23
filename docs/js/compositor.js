@@ -49,7 +49,7 @@ export function prepareCharacter(loaded) {
   mouths.smile = canvases["mouth_smile.png"] ?? mouths.closed;
 
   return { name: loaded.name, manifest: loaded.manifest, base, eyes, mouths,
-           source: canvases["source.png"] ?? null, memo: new Map() };
+           memo: new Map() };
 }
 
 // Memoized per-state composite (base + eye L + eye R + mouth), <=72 combinations.

@@ -4,10 +4,13 @@
 // Same design as the desktop rig: synthetic landmarks from the boxes, Delaunay
 // mesh over feature points + a pinned border, per-channel displacement fields,
 // hybrid layers (eyelid seal, mouth interior) drawn as polygons that follow the
-// warped mesh with colors sampled from the drawing. One deliberate difference:
-// the ARAP solve only ever moves the 6 free cheek vertices, so it is replaced
-// by precomputed inverse-distance weights over the driven vertices — the cheek
-// response is baked straight into each field at build time.
+// warped mesh with colors sampled from the drawing. Deliberate differences from
+// the python rig: (1) the ARAP solve only ever moves the 6 free cheek vertices,
+// so it is replaced by precomputed inverse-distance weights baked into each
+// field; (2) since r7, procedural closed-mouth strokes are NOT baked into the
+// neutral — they render as a mesh-following layer crossfaded by jaw (python
+// still bakes them); (3) JAW_RAMP/jawGain are tuned lower/higher for
+// talk-level jaw response (mirrored back into app.yaml/warp_rig).
 import Delaunator from "./delaunator.js";
 import { CANVAS } from "./config.js";
 import { newCanvas, getData, hexToRgb, bboxAlpha } from "./imageops.js";
@@ -183,12 +186,9 @@ function sampleColors(neutral, lm) {
   return { eyes, mouthInk };
 }
 
-// Detection on stylized faces can "succeed" with sloppy geometry (tiny or
-// offset eye rings). The user's clicked boxes are ground truth: stored
-// landmarks are only trusted when each feature ring actually sits on its box.
 export function buildWarpRig(char) {
-  // neutral 은 항상 온보딩 스프라이트 합성(입 지운 base + 눈 스프라이트 + 다문 입) — 이 시스템의
-  // 계약이자 파이썬 rig_from_character 와 동일한 검증된 경로다. 원본(source)을 직접 기준으로
+  // neutral 은 항상 온보딩 스프라이트 합성 — 기하(박스 합성 랜드마크)는 파이썬
+  // rig_from_character 와 동일한 검증된 경로다. 원본(source)을 직접 기준으로
   // 쓰는 hi-res 노선과 자동인식 저장 랜드마크의 rig 주입은, 원본에 박힌 표정(벌린 입 등)이
   // 합성 neutral 의 기하와 어긋나 입이 둘로 보이거나 안 움직이는 버그 계열을 낳아 제거했다.
   // (선명도 업그레이드는 base 자체를 hi-res 로 인페인트하는 방식으로 별도 재설계할 것.)
@@ -207,17 +207,15 @@ export function buildWarpRig(char) {
     nctx.drawImage(char.eyes.L.open, 0, 0);
     nctx.drawImage(char.eyes.R.open, 0, 0);
   }
-  const size = CANVAS;
   const lm = landmarksFromBoxes(boxes[0], boxes[1], boxes[2], CANVAS, CANVAS);
-  console.info("warp rig r7: composite neutral, box geometry, layered mouth line");
 
   const vid = new Map(FEATURE.map((i, k) => [i, k]));
   const verts = FEATURE.map((i) => [...lm[i]]);
   const borderSeen = new Set();
   for (let k = 0; k < 9; k++) {
     const t = k / 8;
-    for (const p of [[t * (size - 1), 0], [t * (size - 1), size - 1],
-                     [0, t * (size - 1)], [size - 1, t * (size - 1)]]) {
+    for (const p of [[t * (CANVAS - 1), 0], [t * (CANVAS - 1), CANVAS - 1],
+                     [0, t * (CANVAS - 1)], [CANVAS - 1, t * (CANVAS - 1)]]) {
       const key = `${p[0]},${p[1]}`;
       if (!borderSeen.has(key)) { borderSeen.add(key); verts.push(p); }
     }
@@ -296,7 +294,7 @@ export function buildWarpRig(char) {
   }
 
   const rings = (ids) => ids.map((i) => vid.get(i));
-  const out = newCanvas(size, size);
+  const out = newCanvas(CANVAS, CANVAS);
   // 색 샘플은 획이 포함된 합성본에서 — 획 없는 neutral 로 뽑으면 mouthInk 가 피부색이 된다.
   const colors = sampleColors(neutralFull, lm);
   return {
@@ -308,7 +306,9 @@ export function buildWarpRig(char) {
     mouthFill: char.manifest?.mouthStyle?.fill ? hexToRgb(char.manifest.mouthStyle.fill) : MOUTH_FILL,
     // procedural 다문 획 레이어 스펙: 색·굵기·dip(구운 획 bbox 높이 ≈ 아치 깊이)
     mouthLine: procedural ? {
-      color: char.manifest?.mouthStyle?.line ? hexToRgb(char.manifest.mouthStyle.line) : colors.mouthInk,
+      // 색은 매 프레임 쓰는 strokeStyle 문자열로 미리 조립. 굵기 4 는 derive 의 procedural
+      // 닫힌 입 stroke 굵기(makeProceduralClosed)와 같아야 스프라이트 폴백과 이질감이 없다.
+      color: `rgb(${(char.manifest?.mouthStyle?.line ? hexToRgb(char.manifest.mouthStyle.line) : colors.mouthInk).join(",")})`,
       width: 4,
       dip: Math.max(3, boxes[2][3] - boxes[2][1]),
     } : null,
@@ -439,7 +439,7 @@ export function renderWarp(rig, ch) {
       const [cL, cR] = rig.cornerIds.map(at);
       ctx.save();
       ctx.globalAlpha = aLine;
-      ctx.strokeStyle = `rgb(${rig.mouthLine.color.join(",")})`;
+      ctx.strokeStyle = rig.mouthLine.color;
       ctx.lineWidth = rig.mouthLine.width;
       ctx.lineCap = "round";
       ctx.beginPath();

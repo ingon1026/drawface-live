@@ -26,8 +26,8 @@ export const CONFIG = {
 };
 
 export const CANVAS = 512;
-// Hi-res warp source cap: onboarding keeps the original drawing up to this size
-// so the warp engine can render (and record) sharper than the 512 sprite space.
+// Hi-res source cap: onboarding keeps the original drawing up to this size.
+// r6 부터 warp rig 는 사용하지 않음 — hi-res base 인페인트 재설계·신경망 트랙 대비 보존.
 export const SOURCE_MAX = 1024;
 
 // Sprite derivation parameters (mirror of scripts/derive_sprites.py)

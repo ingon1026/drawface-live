@@ -143,8 +143,8 @@ function invalidateOnboardingPreview() {
 async function openOnboarding(file) {
   const bmp = await createImageBitmap(file);
   ob.img = fit512(bmp);
-  // Keep a hi-res copy when the original beats 512 — the warp engine renders
-  // from it directly (the drawing already contains the eyes/mouth).
+  // Keep a hi-res copy when the original beats 512 — 원본 보존용 메타데이터
+  // (r6 부터 warp rig 는 사용 안 함; hi-res 재설계·신경망 트랙 대비 저장만).
   ob.src = (bmp.width > CANVAS || bmp.height > CANVAS) ? fitTo(bmp, SOURCE_MAX) : null;
   ob.points = [];
   ob.drag = null;
@@ -416,8 +416,7 @@ async function start() {
       console.warn("warp rig unavailable:", err);
     }
     $("warpChk").disabled = !char.warp;
-    // Hi-res warp rigs render larger than 512 — raise the output backing store
-    // (CSS keeps the on-page size; recording captures at this resolution).
+    // rig 출력 크기에 backing store 를 맞춤 (r6 부터 항상 512 — CSS 가 표시 크기 유지).
     const outSize = char.warp ? char.warp.out.width : CANVAS;
     $("output").width = $("output").height = outSize;
     const st = {

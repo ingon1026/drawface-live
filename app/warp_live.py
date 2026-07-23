@@ -39,7 +39,7 @@ log = logging.getLogger("warp_live")
 
 # Calibrated blendshapes rarely reach 1.0; gains map a comfortable expression
 # to full channel travel. Overridable via the optional `warp:` config section.
-DEFAULT_GAINS = {"blink_gain": 2.0, "smile_gain": 2.0, "jaw_gain": 1.6, "head_parallax": 1.0}
+DEFAULT_GAINS = {"blink_gain": 2.0, "smile_gain": 2.0, "jaw_gain": 2.2, "head_parallax": 1.0}
 DEFAULT_IDLE = {"breath_period_s": 3.6, "breath_amp": 0.05,
                 "blink_min_s": 4.0, "blink_max_s": 7.0, "blink_ms": 260}
 # In warp mode the mesh rolls the face itself, so the canvas keeps only this
@@ -127,7 +127,12 @@ def rig_from_character(char_dir: str) -> WarpRig | None:
     """Warp rig for a 4-click character: no face detection — eye/mouth boxes
     are recovered from the onboarding sprites (full-canvas overlays whose alpha
     bounds ARE the clicked boxes) and turned into synthetic landmarks. The warp
-    source is the neutral composite, not the inpainted base."""
+    source is the neutral composite, not the inpainted base.
+
+    Parity note: since web r7 the JS rig does NOT bake the procedural closed
+    mouth into the neutral (it renders as a mesh-following crossfade layer);
+    this python rig still bakes it — port docs/js/warp.js mouthLine if the
+    baked-stroke overlap ever shows up here."""
     d = Path(char_dir)
 
     def alpha_box(name: str) -> tuple[float, float, float, float] | None:

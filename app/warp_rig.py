@@ -47,7 +47,7 @@ FEATURE = sorted(set(L_EYE_TOP + L_EYE_BOT + R_EYE_TOP + R_EYE_BOT + L_BROW + R_
 UNIT_REF = 135.6
 BLINK_MAX = 0.62   # pure-warp lid-squash ceiling; the seal layer finishes the close
 SEAL_RAMP = (0.70, 1.0)   # blink range over which the eyelid seal fades in
-JAW_RAMP = (0.30, 0.60)   # jaw range over which lips separate and the interior fills
+JAW_RAMP = (0.15, 0.45)   # talk-level jaw responds too (mirrors web r7 tuning; was 0.30-0.60)
 MOUTH_FILL = (53, 53, 138)  # BGR of #8a3535 — matches the sprite pipeline's default
 
 

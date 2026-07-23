@@ -58,7 +58,7 @@ calibration:
 warp:
   blink_gain: 2.0
   smile_gain: 2.0
-  jaw_gain: 1.6
+  jaw_gain: 2.2   # 말하기 수준 벌림에도 반응 (웹 r7 튜닝 미러)
   head_parallax: 1.0  # mesh parallax strength on top of canvas shift (0 = off)
 
 # Idle motion — keeps the character alive when the face is still or lost

@@ -14,6 +14,8 @@ export function listCharacters() {
 // Derived sprites (visemes, half-eyes, smile) are deterministic re-derivations
 // of the core set — compositor.js rebuilds them at load, so storing them would
 // only multiply the localStorage footprint.
+// source.png 는 현재 런타임 소비자가 없는 원본 보존분(JPEG) — hi-res 인페인트
+// 재설계·신경망 트랙이 쓸 예정이라 유지한다.
 const CORE_FILES = new Set(["base.png", "eye_L_open.png", "eye_R_open.png",
   "eye_L_closed.png", "eye_R_closed.png", "mouth_closed.png", "source.png"]);
 

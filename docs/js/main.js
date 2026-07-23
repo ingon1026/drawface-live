@@ -158,7 +158,7 @@ async function openOnboarding(file) {
   // Photo-trained models often miss hand drawings — prefill when it works,
   // fall back to manual clicks when it doesn't (see outputs/benchmark.md).
   const auto = await detectOnImage(ob.img);
-  ob.landmarks = auto?.landmarks ?? null; // real geometry -> finer warp rig
+  ob.landmarks = auto?.landmarks ?? null; // 메타데이터로 저장만 — rig 는 사용 안 함(r6)
   if (auto && ob.points.length === 0) {
     ob.points = [auto.eyes.L, auto.eyes.R,
                  [auto.mouthBox[0], auto.mouthBox[1]], [auto.mouthBox[2], auto.mouthBox[3]]];
@@ -265,8 +265,8 @@ $("obGenerate").onclick = () => {
   try {
     const { manifest, canvases } = buildCharacter(ob.img, name, { L, R },
       Number($("eyeHalf").value) || 16, mouth);
-    if (ob.landmarks) manifest.landmarks = ob.landmarks; // warp rig prefers real geometry
-    if (ob.src) canvases["source.png"] = ob.src;         // hi-res warp source
+    if (ob.landmarks) manifest.landmarks = ob.landmarks; // 저장만 — rig 는 박스 기하 고정(r6)
+    if (ob.src) canvases["source.png"] = ob.src;         // 원본 보존용 — rig 는 사용 안 함(r6)
     deriveAll(canvases, manifest);
     ob.draft = { name, manifest, canvases };
     ob.previewChar = prepareCharacter(ob.draft);

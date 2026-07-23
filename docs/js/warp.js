@@ -63,35 +63,6 @@ function alphaBox(canvas) {
   return b && [b[0], b[1], b[2] - 1, b[3] - 1]; // exclusive max -> inclusive
 }
 
-// 원본(src)의 입이 **확실히 다물려 있을 때만** true. hi-res 원본을 warp 기준으로 쓸 수 있는지의
-// 게이트다 — 원본에 벌린 입이 박혀 있으면 하이브리드 입 폴리곤과 겹쳐 입이 둘로 보이므로,
-// 조금이라도 애매하면 false 를 돌려 입 지운 base 합성으로 안전하게 떨어진다(선명도만 약간 손해).
-// 판정: 어두운 행(입 획·입 안 그늘)의 세로 스팬. 다문 입 획은 얇은 가로 띠(스팬 작음),
-// 벌린 입은 입술 윤곽선+안쪽 그늘이 세로로 넓게 분포(스팬 큼). 스팬이 작을 때만 "다묾" 확정.
-function mouthLooksClosed(src, closedBox512, canvasSize) {
-  if (!closedBox512) return false;
-  const [bx0, by0, bx1, by1] = closedBox512;
-  const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2, halfW = Math.max(8, (bx1 - bx0) / 2);
-  const sc = src.width / canvasSize;
-  const x0 = Math.max(0, Math.round((cx - halfW) * sc)), x1 = Math.min(src.width, Math.round((cx + halfW) * sc));
-  const y0 = Math.max(0, Math.round((cy - 0.9 * halfW) * sc)), y1 = Math.min(src.height, Math.round((cy + 0.9 * halfW) * sc));
-  const w = x1 - x0, h = y1 - y0;
-  if (w < 4 || h < 4) return false;                                       // 판정 불가 → 안전(base)
-  const d = src.getContext("2d").getImageData(x0, y0, w, h).data;
-  let first = -1, last = -1;
-  for (let r = 0; r < h; r++) {
-    let rowDark = 0;
-    for (let c = 0; c < w; c++) {
-      const i = (r * w + c) * 4;
-      if (d[i + 3] < 128) continue;                                       // 투명 제외
-      if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 110) rowDark++;
-    }
-    if (rowDark > w * 0.06) { if (first < 0) first = r; last = r; }       // 유의미하게 어두운 행
-  }
-  if (first < 0) return true;                                             // 어두운 게 전혀 없음 = 다묾
-  return (last - first + 1) / h <= 0.18;                                  // 얇은 띠일 때만 다묾 확정
-}
-
 // Straight port of warp_rig.landmarks_from_boxes. Exported for tests.
 export function landmarksFromBoxes(eyeL, eyeR, mouth, w, h) {
   const lm = Array.from({ length: 478 }, () => [0, 0]);
@@ -215,56 +186,18 @@ function sampleColors(neutral, lm) {
 // Detection on stylized faces can "succeed" with sloppy geometry (tiny or
 // offset eye rings). The user's clicked boxes are ground truth: stored
 // landmarks are only trusted when each feature ring actually sits on its box.
-function landmarksAgreeWithBoxes(lm, [eyeL, eyeR, mouth]) {
-  const centroid = (ids) => ids.reduce(
-    (a, i) => [a[0] + lm[i][0] / ids.length, a[1] + lm[i][1] / ids.length], [0, 0]);
-  const ringW = (ids) => {
-    const xs = ids.map((i) => lm[i][0]);
-    return Math.max(...xs) - Math.min(...xs);
-  };
-  const fits = (ids, box) => {
-    const [x, y] = centroid(ids);
-    const bw = box[2] - box[0], bh = box[3] - box[1];
-    // ring centered on the clicked feature (within a quarter box) and not tiny
-    return Math.abs(x - (box[0] + box[2]) / 2) <= Math.max(6, bw * 0.25)
-      && Math.abs(y - (box[1] + box[3]) / 2) <= Math.max(6, bh * 0.25)
-      && ringW(ids) >= bw * 0.45;
-  };
-  return fits([...L_EYE_TOP, ...L_EYE_BOT], eyeL)
-    && fits([...R_EYE_TOP, ...R_EYE_BOT], eyeR)
-    && fits([...LIP_TOP, ...LIP_BOT, ...MOUTH_CORNERS], mouth);
-}
-
 export function buildWarpRig(char) {
-  // Hi-res route: the original drawing (stored at up to 1024 by onboarding)
-  // already contains the eyes/mouth, so it can BE the warp source directly —
-  // sharper output than warping the 512 sprite composite. Geometry stays in
-  // 512 space (boxes/landmarks live there) and is scaled up at the end.
-  const src = char.source ?? null;
+  // neutral 은 항상 온보딩 스프라이트 합성(입 지운 base + 눈 스프라이트 + 다문 입) — 이 시스템의
+  // 계약이자 파이썬 rig_from_character 와 동일한 검증된 경로다. 원본(source)을 직접 기준으로
+  // 쓰는 hi-res 노선과 자동인식 저장 랜드마크의 rig 주입은, 원본에 박힌 표정(벌린 입 등)이
+  // 합성 neutral 의 기하와 어긋나 입이 둘로 보이거나 안 움직이는 버그 계열을 낳아 제거했다.
+  // (선명도 업그레이드는 base 자체를 hi-res 로 인페인트하는 방식으로 별도 재설계할 것.)
   const boxes = [char.eyes.L.open, char.eyes.R.open, char.mouths.closed].map(alphaBox);
   if (boxes.some((b) => !b)) throw new Error("onboarding sprites lack alpha bounds");
-  // hi-res 원본은 입이 **확실히 다물린** 그림에서만 기준으로 쓴다 — 애매하면 입 지운 base 합성
-  // (3ffaf46 이전의 검증된 기본값). 감지가 틀려도 입이 둘로 겹치는 대신 선명도만 약간 손해.
-  const useSrc = src && mouthLooksClosed(src, boxes[2], CANVAS);
-  console.info(`warp neutral: ${useSrc ? "hi-res source" : "base composite"}`);
-  const neutral = useSrc ? src : composeCharacter(char, "open", "open", "closed");
-  const size = useSrc ? src.width : CANVAS;
-  const sizeScale = size / CANVAS;
-  // Detectable drawings carry their real 478-point geometry from onboarding —
-  // finer lid/lip curves than the box-synthesized rings — but only when it
-  // agrees with where the user actually placed the features.
-  // 저장 랜드마크는 원본 그림의 기하 — 원본을 neutral 로 쓸 때만 유효하다. base 합성으로
-  // 떨어진 경우(벌린 입 원본) 입 링이 원본 벌린 입 위치에 남아 하이브리드 폴리곤이 다문 획과
-  // 따로 놀며 입이 둘로 보인다 → 박스 합성 기하(파이썬판과 동일 경로)로 재구성한다.
-  const stored = useSrc ? char.manifest?.landmarks : null;
-  let lm = null;
-  if (Array.isArray(stored) && stored.length === 478) {
-    const cand = stored.map(([x, y]) => [x * CANVAS, y * CANVAS]);
-    if (landmarksAgreeWithBoxes(cand, boxes)) lm = cand;
-  }
-  const realGeometry = !!lm;
-  if (!lm) lm = landmarksFromBoxes(boxes[0], boxes[1], boxes[2], CANVAS, CANVAS);
-  if (sizeScale !== 1) lm = lm.map(([x, y]) => [x * sizeScale, y * sizeScale]);
+  const neutral = composeCharacter(char, "open", "open", "closed");
+  const size = CANVAS;
+  const lm = landmarksFromBoxes(boxes[0], boxes[1], boxes[2], CANVAS, CANVAS);
+  console.info("warp rig r6: composite neutral, box geometry");
 
   const vid = new Map(FEATURE.map((i, k) => [i, k]));
   const verts = FEATURE.map((i) => [...lm[i]]);
@@ -290,8 +223,8 @@ export function buildWarpRig(char) {
   const add = (f, i, dx, dy) => { const v = vid.get(i); f[v * 2] += dx; f[v * 2 + 1] += dy; };
   const s = scale;
 
-  for (const [f, top, bot, brow] of [[F.blinkL, L_EYE_TOP, L_EYE_BOT, L_BROW],
-                                     [F.blinkR, R_EYE_TOP, R_EYE_BOT, R_BROW]]) {
+  for (const [f, top, bot] of [[F.blinkL, L_EYE_TOP, L_EYE_BOT],
+                               [F.blinkR, R_EYE_TOP, R_EYE_BOT]]) {
     const ringPts = [...top, ...bot].map((i) => lm[i]);
     const cx = ringPts.reduce((a, p) => a + p[0], 0) / ringPts.length;
     const halfW = Math.max(1, (Math.max(...ringPts.map((p) => p[0])) - Math.min(...ringPts.map((p) => p[0]))) / 2);
@@ -299,9 +232,6 @@ export function buildWarpRig(char) {
     const taper = (x) => Math.max(0.1, 1 - Math.min(1, Math.abs(x - cx) / halfW) ** 2);
     for (const i of top) add(f, i, 0, BLINK_MAX * taper(lm[i][0]) * (targetY - lm[i][1]));
     for (const i of bot) add(f, i, 0, -BLINK_MAX * taper(lm[i][0]) * 1.5 * s);
-    // Brows dip with a blink only when we know where the brows really are —
-    // a box rig's synthesized brow spot can sit on any stroke (head outline).
-    if (realGeometry) for (const i of brow) add(f, i, 0, 4 * s);
   }
   MOUTH_CORNERS.forEach((i, k) => add(F.smile, i, (k ? 1 : -1) * 7 * s, -9 * s));
   for (const i of LIP_TOP) add(F.smile, i, 0, -2 * s);

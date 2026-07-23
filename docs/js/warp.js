@@ -253,7 +253,10 @@ export function buildWarpRig(char) {
   // Detectable drawings carry their real 478-point geometry from onboarding —
   // finer lid/lip curves than the box-synthesized rings — but only when it
   // agrees with where the user actually placed the features.
-  const stored = char.manifest?.landmarks;
+  // 저장 랜드마크는 원본 그림의 기하 — 원본을 neutral 로 쓸 때만 유효하다. base 합성으로
+  // 떨어진 경우(벌린 입 원본) 입 링이 원본 벌린 입 위치에 남아 하이브리드 폴리곤이 다문 획과
+  // 따로 놀며 입이 둘로 보인다 → 박스 합성 기하(파이썬판과 동일 경로)로 재구성한다.
+  const stored = useSrc ? char.manifest?.landmarks : null;
   let lm = null;
   if (Array.isArray(stored) && stored.length === 478) {
     const cand = stored.map(([x, y]) => [x * CANVAS, y * CANVAS]);

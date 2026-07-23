@@ -63,13 +63,12 @@ function alphaBox(canvas) {
   return b && [b[0], b[1], b[2] - 1, b[3] - 1]; // exclusive max -> inclusive
 }
 
-// 원본(src)의 입이 벌어져 있으면 true. 벌린 입 원본을 warp 기준으로 쓰면 원본 입과 하이브리드
-// 입 폴리곤이 겹쳐 입이 둘로 보이므로, 이 판정으로 그런 캐릭터만 입 지운 base 를 기준으로 돌린다.
-// 판정: 어두운 픽셀(입 안)이 **세로로 넓게** 분포하는가. 다문 입은 어두운 획이 얇은 가로 띠
-// (세로 폭 몇 px)에 몰리고, 벌린 입은 안쪽 그늘이 박스 높이의 큰 부분을 차지한다 — 흰 이빨이
-// 사이에 껴도 첫/마지막 어두운 행 스팬으로 잡히므로 강건하다. closedBox512(다문 입 스프라이트의
-// alpha bbox, 얇은 선)는 중심·폭만 취하고 검사 영역은 폭 기준 정사각형 근방으로 넓힌다.
-function mouthLooksOpen(src, closedBox512, canvasSize) {
+// 원본(src)의 입이 **확실히 다물려 있을 때만** true. hi-res 원본을 warp 기준으로 쓸 수 있는지의
+// 게이트다 — 원본에 벌린 입이 박혀 있으면 하이브리드 입 폴리곤과 겹쳐 입이 둘로 보이므로,
+// 조금이라도 애매하면 false 를 돌려 입 지운 base 합성으로 안전하게 떨어진다(선명도만 약간 손해).
+// 판정: 어두운 행(입 획·입 안 그늘)의 세로 스팬. 다문 입 획은 얇은 가로 띠(스팬 작음),
+// 벌린 입은 입술 윤곽선+안쪽 그늘이 세로로 넓게 분포(스팬 큼). 스팬이 작을 때만 "다묾" 확정.
+function mouthLooksClosed(src, closedBox512, canvasSize) {
   if (!closedBox512) return false;
   const [bx0, by0, bx1, by1] = closedBox512;
   const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2, halfW = Math.max(8, (bx1 - bx0) / 2);
@@ -77,21 +76,20 @@ function mouthLooksOpen(src, closedBox512, canvasSize) {
   const x0 = Math.max(0, Math.round((cx - halfW) * sc)), x1 = Math.min(src.width, Math.round((cx + halfW) * sc));
   const y0 = Math.max(0, Math.round((cy - 0.9 * halfW) * sc)), y1 = Math.min(src.height, Math.round((cy + 0.9 * halfW) * sc));
   const w = x1 - x0, h = y1 - y0;
-  if (w < 4 || h < 4) return false;
+  if (w < 4 || h < 4) return false;                                       // 판정 불가 → 안전(base)
   const d = src.getContext("2d").getImageData(x0, y0, w, h).data;
-  let first = -1, last = -1, dark = 0, total = 0;
+  let first = -1, last = -1;
   for (let r = 0; r < h; r++) {
     let rowDark = 0;
     for (let c = 0; c < w; c++) {
       const i = (r * w + c) * 4;
       if (d[i + 3] < 128) continue;                                       // 투명 제외
-      total++;
-      if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 100) { rowDark++; dark++; }
+      if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 110) rowDark++;
     }
-    if (rowDark > w * 0.08) { if (first < 0) first = r; last = r; }       // 유의미하게 어두운 행
+    if (rowDark > w * 0.06) { if (first < 0) first = r; last = r; }       // 유의미하게 어두운 행
   }
-  if (total === 0 || dark / total < 0.04) return false;                   // 어두운 픽셀 자체가 희박
-  return (last - first + 1) / h > 0.28;                                   // 세로 스팬 28%+ = 벌린 입
+  if (first < 0) return true;                                             // 어두운 게 전혀 없음 = 다묾
+  return (last - first + 1) / h <= 0.18;                                  // 얇은 띠일 때만 다묾 확정
 }
 
 // Straight port of warp_rig.landmarks_from_boxes. Exported for tests.
@@ -245,9 +243,10 @@ export function buildWarpRig(char) {
   const src = char.source ?? null;
   const boxes = [char.eyes.L.open, char.eyes.R.open, char.mouths.closed].map(alphaBox);
   if (boxes.some((b) => !b)) throw new Error("onboarding sprites lack alpha bounds");
-  // 입 벌린 원본만 입 지운 base 합성을 기준으로 (원본 벌린 입 + 하이브리드 입 = 두 개 방지).
-  // 입 다문 정상 캐릭터는 hi-res src 를 그대로 써 원본 입술·선명함을 보존한다.
-  const useSrc = src && !mouthLooksOpen(src, boxes[2], CANVAS);
+  // hi-res 원본은 입이 **확실히 다물린** 그림에서만 기준으로 쓴다 — 애매하면 입 지운 base 합성
+  // (3ffaf46 이전의 검증된 기본값). 감지가 틀려도 입이 둘로 겹치는 대신 선명도만 약간 손해.
+  const useSrc = src && mouthLooksClosed(src, boxes[2], CANVAS);
+  console.info(`warp neutral: ${useSrc ? "hi-res source" : "base composite"}`);
   const neutral = useSrc ? src : composeCharacter(char, "open", "open", "closed");
   const size = useSrc ? src.width : CANVAS;
   const sizeScale = size / CANVAS;

@@ -194,10 +194,22 @@ export function buildWarpRig(char) {
   // (선명도 업그레이드는 base 자체를 hi-res 로 인페인트하는 방식으로 별도 재설계할 것.)
   const boxes = [char.eyes.L.open, char.eyes.R.open, char.mouths.closed].map(alphaBox);
   if (boxes.some((b) => !b)) throw new Error("onboarding sprites lack alpha bounds");
-  const neutral = composeCharacter(char, "open", "open", "closed");
+  const neutralFull = composeCharacter(char, "open", "open", "closed");
+  // procedural 입은 다문 획을 neutral 에 굽지 않는다 — 구운 획이 jaw 워프로 늘어나 벌린 입
+  // 폴리곤과 겹치기 때문. renderWarp 가 메시를 따라 획을 그리고 jaw 로 크로스페이드한다.
+  // 손그림 입 스프라이트(proceduralMouth:false)는 검증된 기존 경로(굽기) 유지.
+  const procedural = char.manifest?.proceduralMouth !== false;
+  let neutral = neutralFull;
+  if (procedural) {
+    neutral = newCanvas(CANVAS, CANVAS);
+    const nctx = neutral.getContext("2d");
+    nctx.drawImage(char.base, 0, 0);
+    nctx.drawImage(char.eyes.L.open, 0, 0);
+    nctx.drawImage(char.eyes.R.open, 0, 0);
+  }
   const size = CANVAS;
   const lm = landmarksFromBoxes(boxes[0], boxes[1], boxes[2], CANVAS, CANVAS);
-  console.info("warp rig r6: composite neutral, box geometry");
+  console.info("warp rig r7: composite neutral, box geometry, layered mouth line");
 
   const vid = new Map(FEATURE.map((i, k) => [i, k]));
   const verts = FEATURE.map((i) => [...lm[i]]);
@@ -285,13 +297,22 @@ export function buildWarpRig(char) {
 
   const rings = (ids) => ids.map((i) => vid.get(i));
   const out = newCanvas(size, size);
+  // 색 샘플은 획이 포함된 합성본에서 — 획 없는 neutral 로 뽑으면 mouthInk 가 피부색이 된다.
+  const colors = sampleColors(neutralFull, lm);
   return {
     neutral, verts, tris, scale,
     fields: F,
-    colors: sampleColors(neutral, lm),
+    colors,
     // per-character mouth style wins over the engine default (single source of
     // truth shared with the sprite/derive pipeline)
     mouthFill: char.manifest?.mouthStyle?.fill ? hexToRgb(char.manifest.mouthStyle.fill) : MOUTH_FILL,
+    // procedural 다문 획 레이어 스펙: 색·굵기·dip(구운 획 bbox 높이 ≈ 아치 깊이)
+    mouthLine: procedural ? {
+      color: char.manifest?.mouthStyle?.line ? hexToRgb(char.manifest.mouthStyle.line) : colors.mouthInk,
+      width: 4,
+      dip: Math.max(3, boxes[2][3] - boxes[2][1]),
+    } : null,
+    cornerIds: MOUTH_CORNERS.map((i) => vid.get(i)),
     ctx: out.getContext("2d"),
     ringIds: {
       sealL: [rings(L_EYE_TOP), rings(L_EYE_BOT)],
@@ -409,6 +430,24 @@ export function renderWarp(rig, ch) {
     const width = Math.max(2, (Math.max(...poly.map((p) => p[0])) - Math.min(...poly.map((p) => p[0]))) * 0.06);
     const colors = rig.colors.eyes[colorSide];
     fillRingPoly(ctx, poly, alpha, colors.lid, top, colors.ink, width);
+  }
+  // procedural 다문 획: 메시를 따라 그리고 입이 열리는 만큼 사라짐(크로스페이드) —
+  // neutral 에 굽지 않으므로 벌린 입 폴리곤과 절대 겹치지 않는다.
+  if (rig.mouthLine) {
+    const aLine = 1 - wOpen;
+    if (aLine > 0.02) {
+      const [cL, cR] = rig.cornerIds.map(at);
+      ctx.save();
+      ctx.globalAlpha = aLine;
+      ctx.strokeStyle = `rgb(${rig.mouthLine.color.join(",")})`;
+      ctx.lineWidth = rig.mouthLine.width;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(cL[0], cL[1]);
+      ctx.quadraticCurveTo((cL[0] + cR[0]) / 2, (cL[1] + cR[1]) / 2 + 2 * rig.mouthLine.dip, cR[0], cR[1]);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
   const alphaMouth = wOpen;
   if (alphaMouth > 0.02) {

@@ -63,6 +63,27 @@ function alphaBox(canvas) {
   return b && [b[0], b[1], b[2] - 1, b[3] - 1]; // exclusive max -> inclusive
 }
 
+// 원본(src)의 입 박스 안이 어두우면(입 안이 노출된 벌린 입) true. 다문 입은 입술 선뿐이라 대부분 피부색.
+// box 는 512 좌표 → src 해상도로 스케일해 검사. 벌린 입 원본을 warp 기준으로 쓰면 원본 입과 하이브리드
+// 입 폴리곤이 겹쳐 입이 둘로 보이므로, 이 판정으로 그런 캐릭터만 입 지운 base 를 기준으로 돌린다.
+function mouthLooksOpen(src, box512, canvasSize) {
+  if (!box512) return false;
+  const sc = src.width / canvasSize;
+  const x0 = Math.max(0, Math.round(box512[0] * sc)), y0 = Math.max(0, Math.round(box512[1] * sc));
+  const x1 = Math.min(src.width, Math.round((box512[2] + 1) * sc));
+  const y1 = Math.min(src.height, Math.round((box512[3] + 1) * sc));
+  const w = x1 - x0, h = y1 - y0;
+  if (w < 2 || h < 2) return false;
+  const d = src.getContext("2d").getImageData(x0, y0, w, h).data;
+  let dark = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;                                   // 투명 픽셀 제외
+    n++;
+    if (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] < 90) dark++;  // 어두움 = 입 안
+  }
+  return n > 0 && dark / n > 0.15;   // 입 박스의 15%+ 가 어두우면 벌린 입
+}
+
 // Straight port of warp_rig.landmarks_from_boxes. Exported for tests.
 export function landmarksFromBoxes(eyeL, eyeR, mouth, w, h) {
   const lm = Array.from({ length: 478 }, () => [0, 0]);
@@ -212,11 +233,14 @@ export function buildWarpRig(char) {
   // sharper output than warping the 512 sprite composite. Geometry stays in
   // 512 space (boxes/landmarks live there) and is scaled up at the end.
   const src = char.source ?? null;
-  const size = src ? src.width : CANVAS;
-  const sizeScale = size / CANVAS;
-  const neutral = src ?? composeCharacter(char, "open", "open", "closed");
   const boxes = [char.eyes.L.open, char.eyes.R.open, char.mouths.closed].map(alphaBox);
   if (boxes.some((b) => !b)) throw new Error("onboarding sprites lack alpha bounds");
+  // 입 벌린 원본만 입 지운 base 합성을 기준으로 (원본 벌린 입 + 하이브리드 입 = 두 개 방지).
+  // 입 다문 정상 캐릭터는 hi-res src 를 그대로 써 원본 입술·선명함을 보존한다.
+  const useSrc = src && !mouthLooksOpen(src, boxes[2], CANVAS);
+  const neutral = useSrc ? src : composeCharacter(char, "open", "open", "closed");
+  const size = useSrc ? src.width : CANVAS;
+  const sizeScale = size / CANVAS;
   // Detectable drawings carry their real 478-point geometry from onboarding —
   // finer lid/lip curves than the box-synthesized rings — but only when it
   // agrees with where the user actually placed the features.

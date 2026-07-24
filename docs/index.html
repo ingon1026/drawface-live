@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DrawFace Live — 표정 미러링 허브</title>
-<!-- 메인 허브: 그래픽(소년)·초상화(LivePortrait)·석고상(NVIDIA mark) 3트랙 안내.
-     기존 손그림 미러링 앱은 draw.html 로 보존(삭제 아님 — 클래식 트랙으로 계속 동작). -->
+<title>DrawFace Live — 표정 미러링</title>
+<!-- 메인 = 미러링 스튜디오: 들어가자마자 시연. 캐릭터 선택(석고상 3D 기본 / 소년 2D),
+     내 손그림은 draw.html(기존 앱 보존). mark 헤드는 NVIDIA Maya-ACE(MIT) 파생 —
+     assets3d/LICENSE-mark.txt 고지 포함으로 재배포 조건 충족. -->
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -13,74 +14,228 @@
     margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     font-family: 'Pretendard', 'Noto Sans KR', sans-serif; background: #16161d; color: #e8e8ef;
   }
-  main { width: min(720px, 94vw); padding: 32px 0 56px; }
-  h1 { font-size: 1.45rem; font-weight: 700; margin: 8px 0 4px; }
-  .sub { color: #9a9ab0; font-size: .95rem; margin-bottom: 24px; line-height: 1.5; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
-  .card {
-    background: #0d0d12; border: 1px solid #2a2a35; border-radius: 16px; padding: 20px;
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .card h2 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
-  .card p { margin: 0; color: #9a9ab0; font-size: .88rem; line-height: 1.55; flex: 1; }
-  .card img { width: 100%; border-radius: 10px; border: 1px solid #2a2a35; background: #fff; }
-  .badge { font-size: .72rem; padding: 3px 9px; border-radius: 99px; font-weight: 600; }
-  .live { background: #1d3a2a; color: #6fdc8c; }
-  .local { background: #3a2f1d; color: #e0b45c; }
-  a.btn {
-    display: block; text-align: center; padding: 11px 16px; border-radius: 10px;
-    background: #5b8cff; color: #fff; text-decoration: none; font-size: .95rem; font-weight: 600;
-  }
-  a.btn.alt { background: #2a2a35; }
-  code { background: #1d1d26; padding: 2px 7px; border-radius: 6px; font-size: .83rem; }
-  footer { margin-top: 28px; font-size: .8rem; color: #66667a; line-height: 1.6; }
+  main { width: min(560px, 94vw); padding: 24px 0 48px; }
+  h1 { font-size: 1.25rem; font-weight: 700; margin: 12px 0; }
+  .stage { width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid #2a2a35; position: relative; }
+  #stage3d { background: #0d0d12; cursor: grab; }
+  #stage2d { background: #fff; }
+  .warp-shake { position: absolute; inset: 0; will-change: transform; }
+  .warp-shake canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #gl { z-index: 0; } #cv { z-index: 1; }
+  #cv3d { width: 100%; height: 100%; display: block; }
+  .row { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+  button { padding: 11px 16px; border-radius: 10px; border: 0; background: #5b8cff; color: #fff; font-size: .95rem; font-weight: 600; cursor: pointer; }
+  button.alt { background: #2a2a35; }
+  #mirrorBtn.on { background: #e2647e; }
+  select { padding: 10px; border-radius: 10px; background: #0d0d12; color: inherit; border: 1px solid #2a2a35; font-size: .95rem; }
+  a.link { color: #9a9ab0; font-size: .88rem; text-decoration: none; margin-left: auto; }
+  #status { margin-top: 12px; color: #9a9ab0; font-size: .9rem; min-height: 1.2em; }
+  #status.error { color: #ff7a7a; }
+  footer { margin-top: 22px; font-size: .78rem; color: #66667a; line-height: 1.6; }
   footer a { color: #8a8aff; }
 </style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
 </head>
 <body>
 <main>
-  <h1>🪞 DrawFace Live</h1>
-  <p class="sub">웹캠 표정을 캐릭터가 실시간으로 따라 합니다 — 그림 종류가 엔진을 고릅니다.
-  모든 웹 데모는 브라우저 안에서만 처리되고 영상은 어디로도 전송되지 않습니다.</p>
+  <h1>🪞 DrawFace Live — 웹캠 표정 미러링</h1>
 
-  <div class="grid">
-    <div class="card">
-      <h2>🎨 그래픽 아바타 <span class="badge live">웹에서 바로</span></h2>
-      <p>소년 캐릭터가 눈·입·미소를 따라 합니다. 벡터 입 + WebGL 얼굴 워핑 —
-      talking-drawing-avatar 의 렌더 코어 그대로.</p>
-      <a class="btn" href="boy.html">체험하기 →</a>
-    </div>
+  <div class="stage" id="stage3d"><canvas id="cv3d"></canvas></div>
+  <div class="stage" id="stage2d" style="display:none"><div class="warp-shake" id="shake">
+    <canvas id="gl" width="512" height="512"></canvas>
+    <canvas id="cv" width="512" height="512"></canvas>
+  </div></div>
 
-    <div class="card">
-      <h2>✏️ 내 손그림 <span class="badge live">웹에서 바로</span></h2>
-      <p>내가 그린 그림 한 장을 올리면(4클릭 온보딩) 웹캠 표정을 따라 합니다.
-      화풍 100% 보존 — 원본에 없는 픽셀은 만들지 않습니다.</p>
-      <a class="btn" href="draw.html">체험하기 →</a>
-    </div>
-
-    <div class="card">
-      <h2>🖼 초상화 · 일러스트 <span class="badge local">로컬 GPU</span></h2>
-      <img src="img/flp_illust_ok.png" alt="LivePortrait 일러스트 미러링 실측 프레임" loading="lazy">
-      <p>표준 비율 일러스트·실사·명화는 LivePortrait(TensorRT)로 30fps 실시간 —
-      벌린 입 원본도 자연스럽게 다뭅니다. GPU가 필요해 로컬 전용:
-      <code>~/FasterLivePortrait/live.sh 그림.jpg</code></p>
-      <a class="btn alt" href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">실측 결과 보기 →</a>
-    </div>
-
-    <div class="card">
-      <h2>🗿 석고상 (3D) <span class="badge local">로컬 전용</span></h2>
-      <p>NVIDIA A2F mark 헤드(ARKit 52채널 모프타깃)가 표정을 따라 합니다.
-      헤드 모델이 NVIDIA 파생물이라 공개 배포 대신 로컬에서:
-      <code>localhost:8000/head</code> (자매 리포 talking-drawing-avatar 서버)</p>
-      <a class="btn alt" href="https://github.com/ingon1026/talking-drawing-avatar">자매 리포 →</a>
-    </div>
+  <div class="row">
+    <button id="mirrorBtn">🪞 미러링 시작</button>
+    <select id="charSel">
+      <option value="mark">🗿 석고상 (NVIDIA mark · 3D)</option>
+      <option value="boy">🎨 소년 (그래픽 · 2D)</option>
+    </select>
+    <a class="link" href="draw.html">✏️ 내 손그림으로 →</a>
   </div>
 
+  <div id="status">모델 로딩 중…</div>
+
   <footer>
-    손그림·낙서 = 결정론 워프(이 리포) / 일러스트·실사 = LivePortrait — 실측 근거는
-    <a href="https://github.com/ingon1026/drawface-live">README의 신경망 실측 비교</a> 참고.
-    말하는 아바타(텍스트→발화)는 <a href="https://ingon1026.github.io/talking-drawing-avatar/">talking-drawing-avatar 데모</a>.
+    전부 브라우저 안에서 처리 — 영상은 어디로도 전송되지 않습니다.
+    초상화·실사급 일러스트는 로컬 GPU 트랙(LivePortrait 30fps) —
+    <a href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">실측 결과</a>.
+    mark 헤드 © NVIDIA, <a href="assets3d/LICENSE-mark.txt">MIT (Maya-ACE)</a> 파생.
+    말하는 아바타는 <a href="https://ingon1026.github.io/talking-drawing-avatar/">talking-drawing-avatar</a>.
   </footer>
 </main>
+
+<script src="avatar_core.js"></script>
+<script type="module">
+let THREE, GLTFLoader;
+try {
+  THREE = await import("three");
+  ({ GLTFLoader } = await import("./vendor/GLTFLoader.js"));
+} catch (e) {
+  document.getElementById("status").textContent = "3D 모듈 로드 실패: " + e.message;
+  throw e;
+}
+
+const $ = id => document.getElementById(id);
+const setStatus = AvatarCore.bindStatus($("status"));
+let mode = "mark";   // mark(3D) | boy(2D)
+
+// ================= 공유: 미러링 + 깜빡임 =================
+let smooth = {};
+const W = k => smooth[k] || 0;
+const blinker = AvatarCore.makeBlink({ autoBlink: () => true, intervalMs: () => 3800, duration: 145, jitter: 0.7 });
+const mirror = AvatarCore.makeMirror({
+  gain: { jawopen: 1.6, mouthsmileleft: 1.4, mouthsmileright: 1.4 },
+  onStatus: setStatus,
+});
+$("mirrorBtn").onclick = () => {
+  if (mirror.on) {
+    mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "🪞 미러링 시작";
+    return;
+  }
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; })
+    .catch(e => { mirror.stop(); $("mirrorBtn").classList.remove("on"); setStatus("미러링 실패: " + e.message, true); });
+};
+
+// ================= 3D: 석고상 (mark) =================
+const canvas3d = $("cv3d");
+const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d0d12);
+const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 1000);
+scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x2a2018, 1.1));
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1.5, 2, 3); scene.add(key);
+const rim = new THREE.DirectionalLight(0x77aaff, 1.0); rim.position.set(-2, 1, -2); scene.add(rim);
+const group = new THREE.Group();
+scene.add(group);
+let mesh = null, eyes3d = [], morphMap = [];
+
+function makeEye(cx) {
+  const eg = new THREE.Group();
+  eg.position.set(cx, 159.75, 3.35);
+  const mat = (color, roughness) => new THREE.MeshStandardMaterial({ color, roughness });
+  const sclera = new THREE.Mesh(new THREE.SphereGeometry(1.15, 32, 16), mat(0xf2f0ee, 0.35));
+  const iris = new THREE.Mesh(new THREE.SphereGeometry(0.46, 24, 12), mat(0x44546e, 0.3));
+  iris.position.z = 0.78;
+  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 8), mat(0x0c0c0c, 0.4));
+  pupil.position.z = 1.0;
+  eg.add(sclera, iris, pupil);
+  group.add(eg);
+  return eg;
+}
+
+new GLTFLoader().load("assets3d/mark.glb", g => {
+  g.scene.traverse(o => { if (o.isMesh) mesh = o; });
+  morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
+  group.add(g.scene);
+  const box = new THREE.Box3().setFromObject(g.scene);
+  const c = box.getCenter(new THREE.Vector3());
+  group.position.set(-c.x, -c.y, -c.z);
+  eyes3d = [makeEye(3.41), makeEye(-3.5)];
+  camera.position.set(0, 1.5, 80);
+  camera.lookAt(0, 0, 0);
+  setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요");
+}, undefined, e => setStatus("석고상 로드 실패: " + e, true));
+
+function resize3d() {
+  const r = canvas3d.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = 1; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize3d).observe(canvas3d.parentElement);
+
+let dragging = false, px = 0, py = 0, userYaw = 0, userPitch = 0, nod = 0;
+canvas3d.addEventListener("pointerdown", e => { dragging = true; px = e.clientX; py = e.clientY; });
+addEventListener("pointerup", () => dragging = false);
+addEventListener("pointermove", e => {
+  if (!dragging) return;
+  userYaw += (e.clientX - px) * 0.005; userPitch += (e.clientY - py) * 0.003;
+  userPitch = Math.max(-0.4, Math.min(0.4, userPitch));
+  px = e.clientX; py = e.clientY;
+});
+const gaze3d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker(canvas3d), { mulX: 0.8, mulY: 0.5 });
+
+// ================= 2D: 소년 (boy.html 과 동일 코어) =================
+const cv = $("cv"), ctx2d = cv.getContext("2d");
+const glCanvas = $("gl"), shakeEl = $("shake");
+const PART_FILES = ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open",
+  "eye_L_closed", "eye_R_closed", "pupil_L", "pupil_R"];
+let parts = {}, manifest = null;
+const gaze2d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker($("stage2d")), { mulX: 0.9, mulY: 0.6 });
+const headWander = AvatarCore.makeHeadWander();
+const warp = AvatarCore.makeWarp({
+  threeUrl: "./vendor/three.module.js", glCanvas,
+  getParts: () => parts, getManifest: () => manifest, W,
+});
+
+async function loadBoy() {
+  manifest = await fetch("characters/boy/manifest.json").then(r => r.json());
+  await Promise.all(PART_FILES.map(name => new Promise(res => {
+    const img = new Image();
+    img.onload = () => { parts[name] = img; res(); };
+    img.onerror = () => res();
+    img.src = `characters/boy/${name}.png`;
+  })));
+  warp.setCharacter();
+}
+
+// ================= 캐릭터 선택 =================
+$("charSel").onchange = () => {
+  mode = $("charSel").value;
+  $("stage3d").style.display = mode === "mark" ? "" : "none";
+  $("stage2d").style.display = mode === "boy" ? "" : "none";
+};
+
+// ================= 렌더 루프 (활성 캐릭터만 그림) =================
+function render(now) {
+  requestAnimationFrame(render);
+  smooth = {};
+  mirror.apply(smooth, now);
+  const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
+
+  if (mode === "mark") {
+    if (!mesh) return;
+    const inf = mesh.morphTargetInfluences;
+    for (const [k, idx] of morphMap) {
+      inf[idx] = k === "eyeblinkleft" || k === "eyeblinkright" ? blink : (smooth[k] || 0);
+    }
+    const [gsx, gsy] = gaze3d(0, W);
+    for (const e of eyes3d) e.rotation.set(gsy * 0.3, gsx * 0.4, 0);
+    nod = 0.85 * nod + 0.15 * W("jawopen");
+    group.rotation.set(userPitch + nod * 0.04, userYaw, 0);
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // 2D 소년
+  if (!parts.base || !manifest) return;
+  headWander(shakeEl, now, W("jawopen"), 0.5, null);
+  const warpOn = warp.ready;
+  if (warpOn) { glCanvas.style.visibility = "visible"; warp.render(); }
+  else { glCanvas.style.visibility = "hidden"; }
+  ctx2d.clearRect(0, 0, 512, 512);
+  const draw = (n, dyy = 0) => parts[n] && ctx2d.drawImage(parts[n], 0, dyy);
+  const drawXY = (n, dx, dyy) => parts[n] && ctx2d.drawImage(parts[n], dx, dyy);
+  if (!warpOn) { ctx2d.fillStyle = "#fff"; ctx2d.fillRect(0, 0, 512, 512); draw("base"); }
+  const browUp = -(manifest.browRange || 0) * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2)
+               + (manifest.browRange || 0) * 0.8 * (W("browdownleft") + W("browdownright")) / 2;
+  draw("brow_L", browUp); draw("brow_R", browUp);
+  if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
+  else {
+    draw("eye_L_open"); draw("eye_R_open");
+    const [gzx, gzy] = gaze2d(0, W);
+    const pr = manifest.pupilRange || 0;
+    drawXY("pupil_L", gzx * pr, gzy * pr); drawXY("pupil_R", gzx * pr, gzy * pr);
+  }
+  const jawDy = warp.jawOverlayDy(W("jawopen"), warpOn, manifest);
+  AvatarCore.drawVectorMouth(ctx2d, W, manifest, jawDy);
+}
+
+warp.init();
+loadBoy().catch(e => setStatus("소년 로드 실패: " + e.message, true));
+requestAnimationFrame(render);
+</script>
 </body>
 </html>

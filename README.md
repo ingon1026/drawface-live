@@ -16,9 +16,11 @@
 
 ## ▶ 바로 체험
 
-**https://ingon1026.github.io/drawface-live/**
+**https://ingon1026.github.io/drawface-live/** — 메인은 트랙 허브(그래픽·손그림·초상화·석고상).
+손그림 앱은 [drawface-live/draw.html](https://ingon1026.github.io/drawface-live/draw.html),
+소년 그래픽은 [drawface-live/boy.html](https://ingon1026.github.io/drawface-live/boy.html)로 바로 열립니다.
 
-1. 그림 파일을 **드래그앤드롭** — 얼굴 자동 인식이 눈·입 위치를 찾아줍니다 (실패 시 4번 클릭)
+1. (손그림 앱) 그림 파일을 **드래그앤드롭** — 얼굴 자동 인식이 눈·입 위치를 찾아줍니다 (실패 시 4번 클릭)
 2. **시작** → 웹캠 허용 → 정면·무표정으로 잠깐 캘리브레이션
 3. 끝 — 윙크, 입 모양(아·에·이·오·우), 미소, 고개 움직임이 그림에 실시간 반영
 

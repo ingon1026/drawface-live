@@ -1,91 +1,86 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DrawFace Live</title>
-<link rel="stylesheet" href="style.css">
+<title>DrawFace Live — 표정 미러링 허브</title>
+<!-- 메인 허브: 그래픽(소년)·초상화(LivePortrait)·석고상(NVIDIA mark) 3트랙 안내.
+     기존 손그림 미러링 앱은 draw.html 로 보존(삭제 아님 — 클래식 트랙으로 계속 동작). -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    font-family: 'Pretendard', 'Noto Sans KR', sans-serif; background: #16161d; color: #e8e8ef;
+  }
+  main { width: min(720px, 94vw); padding: 32px 0 56px; }
+  h1 { font-size: 1.45rem; font-weight: 700; margin: 8px 0 4px; }
+  .sub { color: #9a9ab0; font-size: .95rem; margin-bottom: 24px; line-height: 1.5; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .card {
+    background: #0d0d12; border: 1px solid #2a2a35; border-radius: 16px; padding: 20px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .card h2 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+  .card p { margin: 0; color: #9a9ab0; font-size: .88rem; line-height: 1.55; flex: 1; }
+  .card img { width: 100%; border-radius: 10px; border: 1px solid #2a2a35; background: #fff; }
+  .badge { font-size: .72rem; padding: 3px 9px; border-radius: 99px; font-weight: 600; }
+  .live { background: #1d3a2a; color: #6fdc8c; }
+  .local { background: #3a2f1d; color: #e0b45c; }
+  a.btn {
+    display: block; text-align: center; padding: 11px 16px; border-radius: 10px;
+    background: #5b8cff; color: #fff; text-decoration: none; font-size: .95rem; font-weight: 600;
+  }
+  a.btn.alt { background: #2a2a35; }
+  code { background: #1d1d26; padding: 2px 7px; border-radius: 6px; font-size: .83rem; }
+  footer { margin-top: 28px; font-size: .8rem; color: #66667a; line-height: 1.6; }
+  footer a { color: #8a8aff; }
+</style>
 </head>
 <body>
-<header>
-  <h1>DrawFace Live</h1>
-  <p>손그림 한 장이 웹캠 표정을 실시간으로 따라 합니다 — 모든 처리는 브라우저 안에서만 이뤄집니다.</p>
-</header>
-
 <main>
-  <aside id="panel">
-    <label>캐릭터
-      <select id="charSelect"></select>
-    </label>
-    <div class="row">
-      <button id="deleteBtn" title="선택한 캐릭터 삭제">삭제</button>
+  <h1>🪞 DrawFace Live</h1>
+  <p class="sub">웹캠 표정을 캐릭터가 실시간으로 따라 합니다 — 그림 종류가 엔진을 고릅니다.
+  모든 웹 데모는 브라우저 안에서만 처리되고 영상은 어디로도 전송되지 않습니다.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>🎨 그래픽 아바타 <span class="badge live">웹에서 바로</span></h2>
+      <p>소년 캐릭터가 눈·입·미소를 따라 합니다. 벡터 입 + WebGL 얼굴 워핑 —
+      talking-drawing-avatar 의 렌더 코어 그대로.</p>
+      <a class="btn" href="boy.html">체험하기 →</a>
     </div>
 
-    <div id="dropZone" tabindex="0">
-      그림을 끌어다 놓거나<br>클릭해서 선택
-      <input id="fileInput" type="file" accept="image/*" hidden>
+    <div class="card">
+      <h2>✏️ 내 손그림 <span class="badge live">웹에서 바로</span></h2>
+      <p>내가 그린 그림 한 장을 올리면(4클릭 온보딩) 웹캠 표정을 따라 합니다.
+      화풍 100% 보존 — 원본에 없는 픽셀은 만들지 않습니다.</p>
+      <a class="btn" href="draw.html">체험하기 →</a>
     </div>
-    <button id="exampleBtn">예시 캐릭터로 체험</button>
-    <button id="boyBtn">소년 캐릭터로 체험</button>
 
-    <label>카메라
-      <select id="camSelect"></select>
-    </label>
+    <div class="card">
+      <h2>🖼 초상화 · 일러스트 <span class="badge local">로컬 GPU</span></h2>
+      <img src="img/flp_illust_ok.png" alt="LivePortrait 일러스트 미러링 실측 프레임" loading="lazy">
+      <p>표준 비율 일러스트·실사·명화는 LivePortrait(TensorRT)로 30fps 실시간 —
+      벌린 입 원본도 자연스럽게 다뭅니다. GPU가 필요해 로컬 전용:
+      <code>~/FasterLivePortrait/live.sh 그림.jpg</code></p>
+      <a class="btn alt" href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">실측 결과 보기 →</a>
+    </div>
 
-    <label class="check"><input id="mirrorChk" type="checkbox" checked> 미러 컨트롤</label>
-    <label class="check"><input id="vizChk" type="checkbox" checked> 추적 시각화</label>
-    <label class="check"><input id="fxChk" type="checkbox" checked> 스티커 이펙트</label>
-    <label class="check"><input id="warpChk" type="checkbox" checked> 워프 엔진</label>
+    <div class="card">
+      <h2>🗿 석고상 (3D) <span class="badge local">로컬 전용</span></h2>
+      <p>NVIDIA A2F mark 헤드(ARKit 52채널 모프타깃)가 표정을 따라 합니다.
+      헤드 모델이 NVIDIA 파생물이라 공개 배포 대신 로컬에서:
+      <code>localhost:8000/head</code> (자매 리포 talking-drawing-avatar 서버)</p>
+      <a class="btn alt" href="https://github.com/ingon1026/talking-drawing-avatar">자매 리포 →</a>
+    </div>
+  </div>
 
-    <button id="startBtn" class="primary">시작</button>
-    <button id="calibBtn" disabled>재캘리브레이션</button>
-    <button id="recordBtn" disabled title="결과 캔버스를 WebM 영상으로 저장">녹화 시작</button>
-
-    <div id="status" role="status" aria-live="polite">캐릭터를 온보딩하거나 선택하세요</div>
-  </aside>
-
-  <section id="stage">
-    <canvas id="preview" width="640" height="480"></canvas>
-    <canvas id="output" width="512" height="512"></canvas>
-  </section>
+  <footer>
+    손그림·낙서 = 결정론 워프(이 리포) / 일러스트·실사 = LivePortrait — 실측 근거는
+    <a href="https://github.com/ingon1026/drawface-live">README의 신경망 실측 비교</a> 참고.
+    말하는 아바타(텍스트→발화)는 <a href="https://ingon1026.github.io/talking-drawing-avatar/">talking-drawing-avatar 데모</a>.
+  </footer>
 </main>
-
-<dialog id="onboardDlg">
-  <h2>캐릭터 온보딩</h2>
-  <canvas id="onboardCanvas" width="512" height="512"></canvas>
-  <div class="row">
-    <label>이름 <input id="charName" size="10" placeholder="my-char"></label>
-    <label>눈 반박스 <input id="eyeHalf" type="number" value="16" min="6" max="64" size="3">px</label>
-  </div>
-  <div id="onboardStatus"></div>
-  <div class="row">
-    <button id="obReset">다시 클릭</button>
-    <button id="obGenerate" class="primary" disabled>미리보기</button>
-    <button id="obCancel">취소</button>
-  </div>
-  <section id="onboardReview" hidden>
-    <h3>생성 결과 미리보기</h3>
-    <canvas id="reviewCanvas" width="512" height="512"></canvas>
-    <label>표정
-      <select id="reviewState">
-        <option value="neutral">기본</option>
-        <option value="blink">눈 감기</option>
-        <option value="smile">미소</option>
-        <option value="A">입 크게 벌리기</option>
-      </select>
-    </label>
-    <div class="row">
-      <button id="obEdit">위치 수정</button>
-      <button id="obSave" class="primary">이 캐릭터 저장</button>
-    </div>
-  </section>
-</dialog>
-
-<footer>
-  <span>키: <b>c</b> 재캘리브레이션 · <b>m</b> 미러 전환</span>
-  <a href="https://github.com/ingon1026/drawface-live">GitHub</a>
-</footer>
-
-<script type="module" src="js/main.js"></script>
 </body>
 </html>

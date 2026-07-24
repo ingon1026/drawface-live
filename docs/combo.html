@@ -116,7 +116,7 @@ function make3D(canvas, glbName) {
   const gaze = AvatarCore.makeGaze({ gx: 0, gy: 0 }, { mulX: 0.8, mulY: 0.5 });
   function resize() { const r = canvas.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = 1; camera.updateProjectionMatrix(); }
   new ResizeObserver(resize).observe(canvas);
-  return { get ready() { return !!mesh; }, render(blink) {
+  return { render(blink) {
     if (!mesh) return;
     const inf = mesh.morphTargetInfluences;
     for (const [k, idx] of morphMap) inf[idx] = (k === "eyeblinkleft" || k === "eyeblinkright") ? blink : (smooth[k] || 0);
@@ -139,7 +139,7 @@ function make2D(canvas, name) {
     await Promise.all(PARTS.map(f => new Promise(res => { const im = new Image(); im.onload = () => { parts[f] = im; res(); }; im.onerror = res; im.src = `characters/${name}/${f}.png`; })));
     ready();
   })();
-  return { get ready() { return !!parts.base; }, render(blink, now) {
+  return { render(blink) {
     if (!parts.base) return;
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 512, 512);
     const draw = (n, dy = 0) => parts[n] && ctx.drawImage(parts[n], 0, dy);
@@ -186,15 +186,18 @@ $("mirrorBtn").onclick = () => {
 };
 
 // ---------- 렌더 루프 ----------
+let lastFrame = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  if (now - lastFrame < 30) return;   // ~30fps 캡 — 5칸 렌더는 무거운데 데이터·녹화 다 30fps
+  lastFrame = now;
   smooth = {};
   demoApply();
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
   drawMe();   // 내 얼굴 + 랜드마크
   heads.mark.render(blink); heads.claire.render(blink);
-  chars.boy.render(blink, now); chars.girl.render(blink, now);
+  chars.boy.render(blink); chars.girl.render(blink);
   if (recCtx) compositeRec();
 }
 requestAnimationFrame(frame);

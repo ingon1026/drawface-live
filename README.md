@@ -1,7 +1,7 @@
 # 🪞 DrawFace Live
 
 **웹캠 표정을 캐릭터가 실시간으로 따라 합니다 — 전부 브라우저 안에서, 서버·설치·전송 없음.**
-석고상(3D)과 소년 그래픽(2D)은 들어가자마자 시연되고, 내 손그림 한 장도 4클릭이면 캐릭터가 됩니다.
+석고상 남/여(3D)와 소년/소녀 그래픽(2D)은 들어가자마자 시연되고, 내 손그림 한 장도 4클릭이면 캐릭터가 됩니다.
 
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
@@ -23,8 +23,9 @@
 | 로컬 GPU ([아래](#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측)) | 🖼 초상화·표준 비율 일러스트 | LivePortrait TensorRT ≈30fps |
 
 1. **🪞 미러링 시작** → 카메라 허용 → 정면·무표정으로 1초 캘리브레이션
-2. 캐릭터가 입 모양·미소·눈썹·깜빡임·**눈동자(시선)** 를 따라 합니다 — 드롭다운으로 석고상↔소년 전환
+2. 캐릭터가 입 모양·미소·눈썹·깜빡임·**눈동자(시선)** 를 따라 합니다 — 드롭다운으로 석고상 남/여·소년/소녀 전환
 3. **📊 분석** — 캐릭터 옆에 내 얼굴 + 랜드마크 478점(홍채 강조) + 실제 구동 채널값이 비교군으로 표시
+4. **🎬 5인 동시** ([combo.html](https://ingon1026.github.io/drawface-live/combo.html)) — 내 표정 하나로 네 캐릭터를 한 화면에서 동시에 구동·녹화
 
 ## 어떻게 움직이나
 
@@ -35,17 +36,18 @@ flowchart LR
     B --> G["홍채 10점(468~477)<br/>→ 정밀 시선 gx·gy"]
     G --> C
     C --> D["ARKit 표정 채널<br/>jawOpen · eyeBlink · eyeLook…"]
-    D --> E["3D: mark 모프타깃 52개 직결"]
+    D --> E["3D: mark·claire 모프타깃 52개 직결"]
     D --> F["2D: 벡터 입 + WebGL 워프 + 동공"]
 ```
 
 - **시선(눈동자)**: blendshape 의 eyeLook 은 신호가 거칠어, **홍채 랜드마크가 눈꼬리·눈꺼풀
   사이 어느 비율 지점인지**로 직접 계산해 대체 — 별도 모델 0, 머리 회전 1차 자체 보정,
   눈 감으면 직전 시선 유지(깜빡임 널뜀 방지)
-- **채널 표준이 핵심**: MediaPipe 채널 이름과 mark 헤드 모프타깃 이름이 같은 ARKit 표준이라
+- **채널 표준이 핵심**: MediaPipe 채널 이름과 헤드 모프타깃 이름이 같은 ARKit 표준이라
   1:1 직결 — 렌더러(3D/2D)는 같은 채널을 소비하므로 캐릭터 전환이 드롭다운 하나
-- mark 헤드 © NVIDIA — [Maya-ACE](https://github.com/NVIDIA/Maya-ACE)(MIT) 파생,
-  고지 포함([`docs/assets3d/LICENSE-mark.txt`](docs/assets3d/LICENSE-mark.txt)) 재배포
+- **석고상 남/여 = NVIDIA mark·claire 헤드** © NVIDIA — [Maya-ACE](https://github.com/NVIDIA/Maya-ACE)(MIT)
+  토폴로지 + [Audio2Face-3D](https://huggingface.co/nvidia)(v2.3 mark·claire) 52채널 블렌드셰이프로 조립,
+  고지 포함 재배포([`LICENSE-mark`](docs/assets3d/LICENSE-mark.txt) · [`LICENSE-claire`](docs/assets3d/LICENSE-claire.txt))
 
 ## 표정 매핑
 
@@ -229,9 +231,24 @@ usbipd attach --wsl --busid 2-1    # 그 순간 WSL 에 /dev/video0~5 생성
 
 ```text
 docs/     웹앱 (GitHub Pages 루트) — 정적 파일, 빌드 없음
+          (index.html 스튜디오 · combo.html 5인 동시 · draw.html 손그림 · avatar_core.js 공용 코어)
 app/      데스크톱 파이프라인 (config · camera · tracker · compositor · UI · onboard · warp_rig · warp_live)
 scripts/  setup · diagnose · 스프라이트 파생 · 워프 데모 · FasterLivePortrait 실행
 tests/    시맨틱 매핑 · 상태머신 · 설정 · 온보딩 · 워프 리그 검증
 third_party/FasterLivePortrait   평가용 업스트림 (서브모듈, 무수정)
 third_party/animated_drawings    ARAP 솔버 (MIT, 단일 파일 벤더링)
 ```
+
+## 크레딧 · 사용한 오픈소스/모델
+
+| 용도 | 출처 | 라이선스 |
+| --- | --- | --- |
+| 얼굴 추적 (478점 + 52 blendshape) | [Google MediaPipe FaceLandmarker](https://ai.google.dev/edge/mediapipe) | Apache-2.0 |
+| 석고상 헤드 (mark·claire) 토폴로지 | [NVIDIA Maya-ACE](https://github.com/NVIDIA/Maya-ACE) | MIT |
+| 석고상 헤드 52채널 블렌드셰이프 | [NVIDIA Audio2Face-3D](https://huggingface.co/nvidia) (v2.3 mark·claire) | NVIDIA (고지 포함 재배포) |
+| 3D 렌더 · GLB 로드 · 메시 압축 | [three.js](https://threejs.org) r160 (GLTFLoader · meshopt · EXT_meshopt_compression) | MIT |
+| ARAP 워프 솔버 | [Meta AnimatedDrawings](https://github.com/facebookresearch/AnimatedDrawings) | MIT |
+| 신경망 실측 비교 (일러스트 트랙) | [FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait) · [PersonaLive](https://github.com/GVCLab/PersonaLive) | 각 상위 라이선스 |
+
+전부 브라우저/로컬에서만 실행 — 웹캠 영상은 어디로도 전송되지 않습니다. 헤드 재배포 고지:
+[`LICENSE-mark.txt`](docs/assets3d/LICENSE-mark.txt) · [`LICENSE-claire.txt`](docs/assets3d/LICENSE-claire.txt).

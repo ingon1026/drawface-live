@@ -188,7 +188,7 @@ $("recBtn").onclick = () => {
   const mime = ["video/webm;codecs=vp9", "video/webm"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
   if (!mime) { setStatus("이 브라우저는 WebM 녹화를 지원하지 않습니다", true); return; }
   let stream;
-  if (mode() === "mark") stream = canvas3d.captureStream(30);
+  if (is3D()) stream = canvas3d.captureStream(30);   // mark·claire 둘 다 canvas3d 에 렌더
   else {
     recCv = document.createElement("canvas");
     recCv.width = 512; recCv.height = 512;
@@ -291,14 +291,12 @@ addEventListener("pointermove", e => {
 });
 const gaze3d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker(canvas3d), { mulX: 0.8, mulY: 0.5 });
 
-// ================= 2D: 소년(벡터 입+워프) · 돼지/졸라맨(비즈메 스프라이트) =================
-// 소년 파츠 출처: talking-drawing-avatar docs/characters/default 스냅샷 (manifest 의 persona 만 제거)
-// 돼지·졸라맨: assets/sprites 스냅샷 — 입은 코어 makeMouthPicker+비즈메 PNG, 눈 3단계(윙크 가능)
+// ================= 2D: 소년·소녀 (벡터 입 + WebGL 워프 + 동공) =================
+// 파츠 출처: talking-drawing-avatar 기본 캐릭터 규격 (base·눈썹·눈 뜸/감음·동공, 입은 벡터)
 const cv = $("cv"), ctx2d = cv.getContext("2d");
 const glCanvas = $("gl"), shakeEl = $("shake");
 const VECTOR_PARTS = ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open",
   "eye_L_closed", "eye_R_closed", "pupil_L", "pupil_R"];
-const CHAR_FILES = { boy: VECTOR_PARTS, girl: VECTOR_PARTS };
 let parts = {}, manifest = null;
 const charCache = {};
 const gaze2d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker($("stage2d")), { mulX: 0.9, mulY: 0.6 });
@@ -312,7 +310,7 @@ async function loadChar(name) {
   if (!charCache[name]) {
     const m = await fetch(`characters/${name}/manifest.json`).then(r => r.json());
     const ps = {};
-    await Promise.all(CHAR_FILES[name].map(f => new Promise(res => {
+    await Promise.all(VECTOR_PARTS.map(f => new Promise(res => {
       const img = new Image();
       img.onload = () => { ps[f] = img; res(); };
       img.onerror = () => res();
@@ -321,7 +319,7 @@ async function loadChar(name) {
     charCache[name] = { parts: ps, manifest: m };
   }
   ({ parts, manifest } = charCache[name]);
-  if (manifest.proceduralMouth) warp.setCharacter();   // 워프는 벡터 입 캐릭터(소년)만
+  warp.setCharacter();
 }
 
 // ================= 캐릭터 선택 =================
@@ -341,8 +339,11 @@ if (deep && [...$("charSel").options].some(o => o.value === deep)) $("charSel").
 $("charSel").onchange();   // 현재 selection 을 한 번 로드 (기본 mark 또는 딥링크)
 
 // ================= 렌더 루프 (활성 캐릭터만 그림) =================
+let lastFrame = 0;
 function render(now) {
   requestAnimationFrame(render);
+  if (now - lastFrame < 30) return;   // ~30fps 캡 — 데이터·녹화 모두 30fps라 고주사율에서 낭비 방지
+  lastFrame = now;
   smooth = {};
   demoApply();   // 자동 쇼케이스 (미러링 off 일 때만)
   mirror.apply(smooth, now);
@@ -366,10 +367,7 @@ function render(now) {
   // 2D 캐릭터
   if (!parts.base || !manifest) return;
   headWander(shakeEl, now, W("jawopen"), 0.5, null);
-  // 입과 눈을 파츠 구성에 따라 독립 분기 — 소년: 벡터 입+동공 / 졸라맨: 벡터 입+눈 3단계 /
-  // 돼지: 비즈메 스프라이트 입+눈 3단계. 워프는 벡터 입 캐릭터만.
-  const vectorMouth = !!manifest.proceduralMouth;
-  const warpOn = vectorMouth && warp.ready;
+  const warpOn = warp.ready;   // 워프 로드 전엔 base 폴백
   if (warpOn) { glCanvas.style.visibility = "visible"; warp.render(); }
   else { glCanvas.style.visibility = "hidden"; }
   ctx2d.clearRect(0, 0, 512, 512);
@@ -400,7 +398,7 @@ function render(now) {
 }
 
 warp.init();
-loadChar(is3D() ? "boy" : mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));   // 2D 프리로드
+loadChar(is3D() ? "boy" : mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));   // 2D 프리로드(3D 진입 시 boy 워밍, 2D 진입 시 활성 캐릭터 유지)
 requestAnimationFrame(render);
 </script>
 </body>

@@ -6,9 +6,13 @@
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
-![데모 — 표정을 따라 하는 캐릭터](docs/img/demo.gif)
+<p>
+  <img src="docs/img/studio_mark.gif" width="49%" alt="석고상(NVIDIA mark) 미러링 쇼케이스">
+  <img src="docs/img/studio_boy.gif" width="49%" alt="소년 그래픽 미러링 쇼케이스">
+</p>
 
-<sub>표정 시퀀스(윙크·깜빡임·입 모양·미소·고개). 웹캠을 켜면 내 표정이 실시간으로 재생됩니다.</sub>
+<sub>메인 스튜디오의 자동 쇼케이스(미소→아→우→놀람→윙크→시선 좌/우) — 카메라 허용 전에도 이렇게 시연되고,
+🪞 미러링을 시작하면 같은 채널이 내 표정으로 구동됩니다. 두 GIF 는 스튜디오의 ⏺ 녹화 버튼으로 뽑은 것.</sub>
 
 ## ▶ 바로 체험 — https://ingon1026.github.io/drawface-live/
 
@@ -62,6 +66,8 @@ flowchart LR
 3. **시작** → 표정이 그림에 실시간 반영 · **녹화**를 누르면 결과 캔버스만 WebM 저장
 
 그림이 없으면 **예시 캐릭터로 체험**으로 바로. 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
+
+![손그림 데모 — 표정을 따라 하는 돼지](docs/img/demo.gif)
 
 필요한 손작업은 **눈·입 위치 지정뿐** — 나머지 표정은 그림 자신의 획을 기하 변형해 자동
 생성됩니다(잉크 색·선 두께까지 실제 획에서 샘플링, 새 그림을 "생성"하지 않음).

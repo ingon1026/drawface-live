@@ -58,9 +58,27 @@ let smooth = {};
 const W = k => smooth[k] || 0;
 const blinker = AvatarCore.makeBlink({ autoBlink: () => true, intervalMs: () => 3800, duration: 145, jitter: 0.7 });
 const mirror = AvatarCore.makeMirror({ onStatus: setStatus });
-const mpanel = AvatarCore.makeMirrorPanel(mirror, (() => { const d = document.createElement("div"); return d; })());
-// 분석 패널은 자체 캔버스를 그리므로, 그 캔버스를 meCell 에 직접 그린다
-const meCtx = $("meCv").getContext("2d");
+// 내 얼굴 패널: 웹캠(거울) + MediaPipe 478점(홍채 주황)을 meCv 에 직접 그린다.
+// makeMirrorPanel 은 DOM 마운트 가시성(offsetParent)에 의존해 여기선 못 쓰고, 같은 그림을 직접.
+const meCv = $("meCv"), meCtx = meCv.getContext("2d");
+function drawMe() {
+  const w = meCv.width, h = meCv.height;
+  const d = mirror.debug();
+  meCtx.fillStyle = "#0d0d12"; meCtx.fillRect(0, 0, w, h);
+  if (!mirror.on || !d.video || d.video.readyState < 2) {
+    meCtx.fillStyle = "#7a7a90"; meCtx.font = "15px sans-serif"; meCtx.textAlign = "center";
+    meCtx.fillText("🪞 미러링을 시작하면", w / 2, h / 2 - 12);
+    meCtx.fillText("내 얼굴이 여기 표시됩니다", w / 2, h / 2 + 14);
+    return;
+  }
+  meCtx.save(); meCtx.scale(-1, 1); meCtx.drawImage(d.video, -w, 0, w, h); meCtx.restore();   // 거울
+  if (d.lm) {
+    meCtx.fillStyle = "rgba(91,140,255,.85)";
+    for (let i = 0; i < 468; i++) meCtx.fillRect((1 - d.lm[i].x) * w - 1, d.lm[i].y * h - 1, 2, 2);
+    meCtx.fillStyle = "#ffb03a";   // 홍채 10점 = 시선 입력
+    for (let i = 468; i < d.lm.length; i++) meCtx.fillRect((1 - d.lm[i].x) * w - 2, d.lm[i].y * h - 2, 4, 4);
+  }
+}
 
 // ---------- 3D 헤드 하나 (mark/claire 각자 씬·렌더러) ----------
 const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
@@ -174,12 +192,7 @@ function frame(now) {
   demoApply();
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
-  mpanel.draw(W);
-  // 분석 패널 캔버스를 meCell 에 복사 (contain)
-  const src = mpanel.canvas;
-  meCtx.fillStyle = "#0d0d12"; meCtx.fillRect(0, 0, 360, 360);
-  meCtx.drawImage(src, 0, 30, 360, 270);
-  // 채널 막대 대신 얼굴만 크게 — 막대는 스튜디오에서
+  drawMe();   // 내 얼굴 + 랜드마크
   heads.mark.render(blink); heads.claire.render(blink);
   chars.boy.render(blink, now); chars.girl.render(blink, now);
   if (recCtx) compositeRec();

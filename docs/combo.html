@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DrawFace Live — 5인 동시 미러링</title>
+<!-- 내 얼굴(MediaPipe) + 석고 남/여(mark·claire) + 소년/소녀를 한 makeMirror 로 동시 구동.
+     README 히어로용 5칸 합성 녹화 페이지 (레이아웃: 나 | 석고 위아래 | 캐릭터 위아래). -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    font-family: 'Pretendard','Noto Sans KR',sans-serif; background: #16161d; color: #e8e8ef; }
+  main { padding: 20px 0 40px; width: min(1000px, 97vw); }
+  h1 { font-size: 1.1rem; font-weight: 700; }
+  .grid { display: grid; grid-template-columns: 1.05fr 1fr 1fr; gap: 10px; align-items: center; }
+  .cell { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; border: 1px solid #2a2a35; }
+  .cell.d3 { background: #0d0d12; } .cell.d2 { background: #fff; }
+  .cell .tag { position: absolute; left: 8px; top: 6px; font-size: .72rem; color: #9a9ab0; z-index: 2; }
+  #meCell { grid-row: span 2; background: #0d0d12; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #meCell canvas { object-fit: contain; }
+  .row { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+  button { padding: 11px 16px; border-radius: 10px; border: 0; background: #5b8cff; color: #fff; font-weight: 600; cursor: pointer; }
+  #mirrorBtn.on, #recBtn.on { background: #e2647e; }
+  #status { margin-top: 10px; color: #9a9ab0; font-size: .9rem; min-height: 1.2em; }
+  a.link { color: #9a9ab0; font-size: .85rem; margin-left: auto; text-decoration: none; }
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<main>
+  <h1>🪞 5인 동시 미러링 — 내 표정 → 석고 남/여 + 소년/소녀</h1>
+  <div class="grid">
+    <div class="cell" id="meCell"><span class="tag">나 (MediaPipe)</span><canvas id="meCv" width="360" height="360"></canvas></div>
+    <div class="cell d3"><span class="tag">석고 남</span><canvas id="markCv"></canvas></div>
+    <div class="cell d2"><span class="tag">소년</span><canvas id="boyCv" width="400" height="400"></canvas></div>
+    <div class="cell d3"><span class="tag">석고 여</span><canvas id="claireCv"></canvas></div>
+    <div class="cell d2"><span class="tag">소녀</span><canvas id="girlCv" width="400" height="400"></canvas></div>
+  </div>
+  <div class="row">
+    <button id="mirrorBtn">🪞 미러링 시작</button>
+    <button class="alt" id="recBtn" style="background:#2a2a35">⏺ 5칸 녹화</button>
+    <a class="link" href="./">← 스튜디오</a>
+  </div>
+  <div id="status">로딩 중…</div>
+</main>
+
+<script src="avatar_core.js"></script>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/meshopt_decoder.module.js";
+
+const $ = id => document.getElementById(id);
+const setStatus = AvatarCore.bindStatus($("status"));
+let smooth = {};
+const W = k => smooth[k] || 0;
+const blinker = AvatarCore.makeBlink({ autoBlink: () => true, intervalMs: () => 3800, duration: 145, jitter: 0.7 });
+const mirror = AvatarCore.makeMirror({ onStatus: setStatus });
+const mpanel = AvatarCore.makeMirrorPanel(mirror, (() => { const d = document.createElement("div"); return d; })());
+// 분석 패널은 자체 캔버스를 그리므로, 그 캔버스를 meCell 에 직접 그린다
+const meCtx = $("meCv").getContext("2d");
+
+// ---------- 3D 헤드 하나 (mark/claire 각자 씬·렌더러) ----------
+const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
+function make3D(canvas, glbName) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0d0d12);
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 1000);
+  scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x2a2018, 1.1));
+  const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1.5, 2, 3); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x77aaff, 1.0); rim.position.set(-2, 1, -2); scene.add(rim);
+  const group = new THREE.Group(); scene.add(group);
+  let mesh = null, morphMap = [], eyes = [], nod = 0;
+  function makeEye(sign, box) {
+    const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), k = s.y / 41.5;
+    const eg = new THREE.Group();
+    eg.position.set(c.x + sign * 0.111 * s.x, c.y + 0.151 * s.y, c.z + 0.284 * s.z);
+    const mat = (col, r) => new THREE.MeshStandardMaterial({ color: col, roughness: r });
+    const sc = new THREE.Mesh(new THREE.SphereGeometry(1.15 * k, 32, 16), mat(0xf2f0ee, 0.35));
+    const ir = new THREE.Mesh(new THREE.SphereGeometry(0.46 * k, 24, 12), mat(0x44546e, 0.3)); ir.position.z = 0.78 * k;
+    const pu = new THREE.Mesh(new THREE.SphereGeometry(0.2 * k, 16, 8), mat(0x0c0c0c, 0.4)); pu.position.z = 1.0 * k;
+    eg.add(sc, ir, pu); group.add(eg); return eg;
+  }
+  loader.load(`assets3d/${glbName}.glb?v=3`, g => {
+    g.scene.traverse(o => { if (o.isMesh) { mesh = o; o.frustumCulled = false; } });
+    morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
+    group.add(g.scene);
+    const box = new THREE.Box3().setFromObject(g.scene);
+    const c = box.getCenter(new THREE.Vector3());
+    eyes = [makeEye(1, box), makeEye(-1, box)];
+    group.position.set(-c.x, -c.y, -c.z);
+    camera.position.set(0, 1.5, 80); camera.lookAt(0, 0, 0);
+    ready();
+  }, undefined, e => setStatus(glbName + " 로드 실패: " + e, true));
+  const gaze = AvatarCore.makeGaze({ gx: 0, gy: 0 }, { mulX: 0.8, mulY: 0.5 });
+  function resize() { const r = canvas.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = 1; camera.updateProjectionMatrix(); }
+  new ResizeObserver(resize).observe(canvas);
+  return { get ready() { return !!mesh; }, render(blink) {
+    if (!mesh) return;
+    const inf = mesh.morphTargetInfluences;
+    for (const [k, idx] of morphMap) inf[idx] = (k === "eyeblinkleft" || k === "eyeblinkright") ? blink : (smooth[k] || 0);
+    const [gx, gy] = gaze(0, W);
+    for (const e of eyes) e.rotation.set(gy * 0.3, gx * 0.4, 0);
+    nod = 0.85 * nod + 0.15 * W("jawopen");
+    group.rotation.set(nod * 0.04, 0, 0);
+    renderer.render(scene, camera);
+  } };
+}
+
+// ---------- 2D 캐릭터 하나 (벡터 입, 워프 없음 — 가벼움) ----------
+const PARTS = ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open", "eye_L_closed", "eye_R_closed", "pupil_L", "pupil_R"];
+function make2D(canvas, name) {
+  const ctx = canvas.getContext("2d");
+  const gaze = AvatarCore.makeGaze({ gx: 0, gy: 0 }, { mulX: 0.9, mulY: 0.6 });
+  let parts = {}, manifest = null;
+  (async () => {
+    manifest = await fetch(`characters/${name}/manifest.json`).then(r => r.json());
+    await Promise.all(PARTS.map(f => new Promise(res => { const im = new Image(); im.onload = () => { parts[f] = im; res(); }; im.onerror = res; im.src = `characters/${name}/${f}.png`; })));
+    ready();
+  })();
+  return { get ready() { return !!parts.base; }, render(blink, now) {
+    if (!parts.base) return;
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 512, 512);
+    const draw = (n, dy = 0) => parts[n] && ctx.drawImage(parts[n], 0, dy);
+    const drawXY = (n, dx, dy) => parts[n] && ctx.drawImage(parts[n], dx, dy);
+    const browUp = -(manifest.browRange || 0) * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2);
+    draw("base"); draw("brow_L", browUp); draw("brow_R", browUp);
+    const [gx, gy] = gaze(0, W);
+    if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
+    else { draw("eye_L_open"); draw("eye_R_open"); const pr = manifest.pupilRange || 0; drawXY("pupil_L", gx * pr, gy * pr); drawXY("pupil_R", gx * pr, gy * pr); }
+    AvatarCore.drawVectorMouth(ctx, W, manifest, (manifest.jawDrop || 0) * W("jawopen"));
+  } };
+}
+
+// canvas 크기(3D)는 CSS 크기에 맞춰야 함 → 초기 400
+["markCv", "claireCv"].forEach(id => { $(id).width = 400; $(id).height = 400; });
+const heads = { mark: make3D($("markCv"), "mark"), claire: make3D($("claireCv"), "claire") };
+const chars = { boy: make2D($("boyCv"), "boy"), girl: make2D($("girlCv"), "girl") };
+
+let readyN = 0;
+function ready() { if (++readyN >= 4) setStatus("🪞 미러링 시작을 누르고 카메라를 허용하세요 (또는 자동 시연 대기)"); }
+
+// ---------- 자동 쇼케이스 (미러링 전 시연) ----------
+const POSES = [
+  { mouthsmileleft: .9, mouthsmileright: .9 }, { jawopen: .75 }, { mouthpucker: .95, jawopen: .12 },
+  { jawopen: .45, browinnerup: 1, eyewideleft: .7, eyewideright: .7 }, { eyeblinkleft: 1, mouthsmileright: .5 },
+  { eyelookoutleft: .9, eyelookinright: .9 }, { eyelookoutright: .9, eyelookinleft: .9 },
+];
+let demoTarget = null, demoTimer = null; const demoW = {};
+const showcase = AvatarCore.makeShowcase(pose => new Promise(res => { demoTarget = pose; setTimeout(() => { demoTarget = null; setTimeout(res, 320); }, 1300); }), POSES);
+function scheduleDemo(d) { clearTimeout(demoTimer); demoTimer = setTimeout(() => { if (mirror.on || showcase.running) return; setStatus("🎬 자동 시연 중 — 🪞 미러링으로 직접 조종"); showcase.play().then(() => { if (!mirror.on) scheduleDemo(4000); }); }, d); }
+function demoApply() {
+  if (mirror.on) { for (const k in demoW) delete demoW[k]; return; }
+  for (const k in demoW) if (!demoTarget || !(k in demoTarget)) demoW[k] *= 0.85;
+  if (demoTarget) for (const k in demoTarget) demoW[k] = 0.85 * (demoW[k] || 0) + 0.15 * demoTarget[k];
+  for (const k in demoW) { if (demoW[k] < 0.01) delete demoW[k]; else smooth[k] = Math.max(smooth[k] || 0, demoW[k]); }
+}
+scheduleDemo(2200);
+
+$("mirrorBtn").onclick = () => {
+  if (mirror.on) { mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "🪞 미러링 시작"; scheduleDemo(2000); return; }
+  showcase.stop(); clearTimeout(demoTimer);
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; })
+    .catch(e => { mirror.stop(); setStatus("미러링 실패: " + e.message, true); });
+};
+
+// ---------- 렌더 루프 ----------
+function frame(now) {
+  requestAnimationFrame(frame);
+  smooth = {};
+  demoApply();
+  mirror.apply(smooth, now);
+  const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
+  mpanel.draw(W);
+  // 분석 패널 캔버스를 meCell 에 복사 (contain)
+  const src = mpanel.canvas;
+  meCtx.fillStyle = "#0d0d12"; meCtx.fillRect(0, 0, 360, 360);
+  meCtx.drawImage(src, 0, 30, 360, 270);
+  // 채널 막대 대신 얼굴만 크게 — 막대는 스튜디오에서
+  heads.mark.render(blink); heads.claire.render(blink);
+  chars.boy.render(blink, now); chars.girl.render(blink, now);
+  if (recCtx) compositeRec();
+}
+requestAnimationFrame(frame);
+
+// ---------- 5칸 합성 녹화 (1200×800): [나 | 석고남/여 | 소년/녀] ----------
+let recorder = null, recCanvas = null, recCtx = null;
+function compositeRec() {
+  const c = recCtx;
+  c.fillStyle = "#16161d"; c.fillRect(0, 0, 1200, 800);
+  c.drawImage($("meCv"), 20, 220, 360, 360);        // 나 (세로 가운데)
+  c.drawImage($("markCv"), 400, 0, 400, 400);       // 석고 남
+  c.drawImage($("claireCv"), 400, 400, 400, 400);   // 석고 여
+  c.fillStyle = "#fff"; c.fillRect(800, 0, 400, 800);
+  c.drawImage($("boyCv"), 800, 0, 400, 400);        // 소년
+  c.drawImage($("girlCv"), 800, 400, 400, 400);     // 소녀
+}
+$("recBtn").onclick = () => {
+  if (recorder) { recorder.stop(); return; }
+  const mime = ["video/webm;codecs=vp9", "video/webm"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!mime) { setStatus("이 브라우저는 WebM 녹화 미지원", true); return; }
+  recCanvas = document.createElement("canvas"); recCanvas.width = 1200; recCanvas.height = 800;
+  recCtx = recCanvas.getContext("2d");
+  const chunks = [];
+  recorder = new MediaRecorder(recCanvas.captureStream(30), { mimeType: mime });
+  recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+  recorder.onstop = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(chunks, { type: "video/webm" })); a.download = "drawface-5.webm"; a.click();
+    URL.revokeObjectURL(a.href); recorder = null; recCtx = null; recCanvas = null;
+    $("recBtn").classList.remove("on"); $("recBtn").textContent = "⏺ 5칸 녹화"; setStatus("녹화 완료 — WebM 저장됨");
+  };
+  recorder.start(); $("recBtn").classList.add("on"); $("recBtn").textContent = "⏹ 녹화 종료";
+  setStatus("녹화 중 — 5칸 합성 저장 (웹캠 원본은 미포함)");
+};
+</script>
+</body>
+</html>

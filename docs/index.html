@@ -91,16 +91,13 @@ try {
 
 const $ = id => document.getElementById(id);
 const setStatus = AvatarCore.bindStatus($("status"));
-let mode = "mark";   // mark(3D) | boy(2D)
+
 
 // ================= 공유: 미러링 + 깜빡임 =================
 let smooth = {};
 const W = k => smooth[k] || 0;
 const blinker = AvatarCore.makeBlink({ autoBlink: () => true, intervalMs: () => 3800, duration: 145, jitter: 0.7 });
-const mirror = AvatarCore.makeMirror({
-  gain: { jawopen: 1.6, mouthsmileleft: 1.4, mouthsmileright: 1.4 },
-  onStatus: setStatus,
-});
+const mirror = AvatarCore.makeMirror({ onStatus: setStatus });
 $("mirrorBtn").onclick = () => {
   if (mirror.on) {
     mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "🪞 미러링 시작";
@@ -169,7 +166,8 @@ addEventListener("pointermove", e => {
 });
 const gaze3d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker(canvas3d), { mulX: 0.8, mulY: 0.5 });
 
-// ================= 2D: 소년 (boy.html 과 동일 코어) =================
+// ================= 2D: 소년 =================
+// 파츠 출처: talking-drawing-avatar docs/characters/default 스냅샷 (manifest 의 persona 만 제거)
 const cv = $("cv"), ctx2d = cv.getContext("2d");
 const glCanvas = $("gl"), shakeEl = $("shake");
 const PART_FILES = ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open",
@@ -194,11 +192,17 @@ async function loadBoy() {
 }
 
 // ================= 캐릭터 선택 =================
+// 렌더러 선택 — select 값이 단일 진실(mark=3D 씬 / boy=2D 스프라이트. 캐릭터 목록이 아니라 렌더러 2종)
+const mode = () => $("charSel").value;
 $("charSel").onchange = () => {
-  mode = $("charSel").value;
-  $("stage3d").style.display = mode === "mark" ? "" : "none";
-  $("stage2d").style.display = mode === "boy" ? "" : "none";
+  $("stage3d").style.display = mode() === "mark" ? "" : "none";
+  $("stage2d").style.display = mode() === "boy" ? "" : "none";
 };
+// 딥링크: ?char=boy 로 진입하면 소년부터 (draw.html·boy.html 이 사용)
+if (new URLSearchParams(location.search).get("char") === "boy") {
+  $("charSel").value = "boy";
+  $("charSel").onchange();
+}
 
 // ================= 렌더 루프 (활성 캐릭터만 그림) =================
 function render(now) {
@@ -207,7 +211,7 @@ function render(now) {
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
 
-  if (mode === "mark") {
+  if (mode() === "mark") {
     if (!mesh) return;
     const inf = mesh.morphTargetInfluences;
     for (const [k, idx] of morphMap) {

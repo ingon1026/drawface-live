@@ -30,9 +30,9 @@
 
 추적·합성 전부 브라우저 안에서 실행되고, 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
 
-3D 미러링(NVIDIA A2F mark 헤드가 웹캠 표정을 따라함)은 자매 리포
-[talking-drawing-avatar](https://github.com/ingon1026/talking-drawing-avatar)의 로컬 3D 스튜디오에서 —
-헤드 모델이 NVIDIA 파생물이라 공개 배포 대신 로컬 전용으로 제공됩니다.
+3D 미러링(NVIDIA A2F mark 헤드)은 **메인 페이지에서 바로** 체험합니다 — mark 헤드는
+[Maya-ACE](https://github.com/NVIDIA/Maya-ACE)(MIT) 파생으로 라이선스 확인 후 고지
+포함([`docs/assets3d/LICENSE-mark.txt`](docs/assets3d/LICENSE-mark.txt)) 재배포합니다.
 
 ```mermaid
 flowchart LR

@@ -6,12 +6,12 @@
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
-![4캐릭터 동기 쇼케이스 — 석고상·소년·돼지·졸라맨](docs/img/studio_sync.gif)
+![내 표정으로 석고상·소년이 동시에 움직이는 실시간 미러링](docs/img/studio_live.gif)
 
-<sub>**네 캐릭터가 같은 표정 채널로 동시에 구동됩니다** (미소→아→우→놀람→윙크→시선 좌/우) —
-석고상은 3D 모프타깃, 소년·졸라맨은 벡터 입, 돼지는 비즈메 스프라이트로 각자 렌더하지만 입력 채널은 하나.
-카메라 허용 전에도 이렇게 자동 시연되고, 🪞 미러링을 시작하면 같은 채널이 내 표정으로 구동됩니다.
-GIF 는 스튜디오의 ⏺ 녹화 버튼으로 캐릭터별 녹화 후 합성.</sub>
+<sub>**웹캠 표정 하나로 세 화면이 동시에 구동됩니다** — 왼쪽은 내 얼굴에 MediaPipe 478점 랜드마크
+(홍채는 주황)가 얹힌 모습, 가운데는 석고상(3D 모프타깃), 오른쪽은 소년(2D). 입을 벌리면 셋이 같이
+벌리고, 눈동자를 굴리면 같이 따라옵니다. 스튜디오에서 🧩 <b>모두</b> 모드 → 🪞 미러링 → ⏺ 녹화로
+이 영상을 그대로 뽑을 수 있습니다. (자동 쇼케이스 버전: <a href="docs/img/studio_sync.gif">studio_sync.gif</a>)</sub>
 
 ## ▶ 바로 체험 — https://ingon1026.github.io/drawface-live/
 

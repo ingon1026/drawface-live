@@ -6,12 +6,13 @@
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
-![내 표정으로 석고상·소년이 동시에 움직이는 실시간 미러링](docs/img/studio_live.gif)
+![내 표정 하나로 석고상 남/여 + 소년/소녀가 동시에 움직이는 실시간 미러링](docs/img/studio_5.gif)
 
-<sub>**웹캠 표정 하나로 세 화면이 동시에 구동됩니다** — 왼쪽은 내 얼굴에 MediaPipe 478점 랜드마크
-(홍채는 주황)가 얹힌 모습, 가운데는 석고상(3D 모프타깃), 오른쪽은 소년(2D). 입을 벌리면 셋이 같이
-벌리고, 눈동자를 굴리면 같이 따라옵니다. 스튜디오에서 🧩 <b>모두</b> 모드 → 🪞 미러링 → ⏺ 녹화로
-이 영상을 그대로 뽑을 수 있습니다. (자동 쇼케이스 버전: <a href="docs/img/studio_sync.gif">studio_sync.gif</a>)</sub>
+<sub>**웹캠 표정 하나로 다섯 화면이 동시에 구동됩니다** — 왼쪽은 내 얼굴에 MediaPipe 478점 랜드마크
+(홍채는 주황), 가운데는 석고상 남/여(NVIDIA mark·claire, 3D 모프타깃), 오른쪽은 소년/소녀(2D 벡터 입).
+입을 벌리면 넷이 같이 벌리고, 눈동자를 굴리면 같이 따라옵니다. <a href="https://ingon1026.github.io/drawface-live/combo.html">combo.html</a>
+에서 🪞 미러링 → ⏺ 5칸 녹화로 이 영상을 그대로 뽑을 수 있습니다.
+(자동 쇼케이스 버전: <a href="docs/img/studio_sync.gif">studio_sync.gif</a>)</sub>
 
 ## ▶ 바로 체험 — https://ingon1026.github.io/drawface-live/
 

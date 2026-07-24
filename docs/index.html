@@ -15,10 +15,6 @@
     font-family: 'Pretendard', 'Noto Sans KR', sans-serif; background: #16161d; color: #e8e8ef;
   }
   main { width: min(900px, 96vw); padding: 24px 0 48px; }
-  /* 모두(동시 구동) 모드: 내 얼굴 → 석고상 → 소년 순서로 나란히 */
-  main:has(.duo.all) { width: min(1340px, 97vw); }
-  .duo.all .stage { flex: 1 1 300px; max-width: 420px; }
-  .duo.all #panel { flex: 1 1 280px; max-width: 420px; order: -1; }
   h1 { font-size: 1.25rem; font-weight: 700; margin: 12px 0; }
   .duo { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
   .stage { flex: 1 1 380px; max-width: 560px; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid #2a2a35; position: relative; }
@@ -68,8 +64,10 @@
     <button class="alt" id="panelBtn">📊 분석</button>
     <button class="alt" id="recBtn" title="캐릭터 캔버스만 WebM 영상으로 저장">⏺ 녹화</button>
     <select id="charSel">
-      <option value="mark">🗿 석고상 (NVIDIA mark · 3D)</option>
+      <option value="mark">🗿 석고상 남성 (NVIDIA mark · 3D)</option>
+      <option value="claire">🗿 석고상 여성 (NVIDIA claire · 3D)</option>
       <option value="boy">🎨 소년 (그래픽 · 2D)</option>
+      <option value="girl">🎨 소녀 (그래픽 · 2D)</option>
     </select>
     <a class="link" href="draw.html">✏️ 내 손그림으로 →</a>
   </div>
@@ -80,7 +78,7 @@
     전부 브라우저 안에서 처리 — 영상은 어디로도 전송되지 않습니다.
     초상화·실사급 일러스트는 로컬 GPU 트랙(LivePortrait 30fps) —
     <a href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">실측 결과</a>.
-    mark 헤드 © NVIDIA, <a href="assets3d/LICENSE-mark.txt">MIT (Maya-ACE)</a> 파생.
+    mark·claire 헤드 © NVIDIA, <a href="assets3d/LICENSE-mark.txt">MIT (Maya-ACE)</a> 파생.
     말하는 아바타는 <a href="https://ingon1026.github.io/talking-drawing-avatar/">talking-drawing-avatar</a>.
   </footer>
 </main>
@@ -192,8 +190,7 @@ $("recBtn").onclick = () => {
   if (mode() === "mark") stream = canvas3d.captureStream(30);
   else {
     recCv = document.createElement("canvas");
-    if (mode() === "all") { recCv.width = 1200; recCv.height = 400; }   // [내 얼굴|석고상|소년]
-    else { recCv.width = 512; recCv.height = 512; }
+    recCv.width = 512; recCv.height = 512;
     stream = recCv.captureStream(30);
   }
   const chunks = [];
@@ -228,15 +225,19 @@ const group = new THREE.Group();
 scene.add(group);
 let mesh = null, eyes3d = [], morphMap = [];
 
-function makeEye(cx) {
+// 눈알(안구 메시가 없는 헤드의 소켓 채움) — 위치·크기를 헤드 bbox 에서 유도해 mark/claire 공용.
+// mark 로 보정한 bbox 분율: 눈은 중심에서 (±0.111·sx, +0.151·sy, +0.284·sz), 스케일 sy/41.5.
+function makeEye(sign, box) {
+  const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+  const k = s.y / 41.5;   // mark 기준 스케일
   const eg = new THREE.Group();
-  eg.position.set(cx, 159.75, 3.35);
+  eg.position.set(c.x + sign * 0.111 * s.x, c.y + 0.151 * s.y, c.z + 0.284 * s.z);
   const mat = (color, roughness) => new THREE.MeshStandardMaterial({ color, roughness });
-  const sclera = new THREE.Mesh(new THREE.SphereGeometry(1.15, 32, 16), mat(0xf2f0ee, 0.35));
-  const iris = new THREE.Mesh(new THREE.SphereGeometry(0.46, 24, 12), mat(0x44546e, 0.3));
-  iris.position.z = 0.78;
-  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 8), mat(0x0c0c0c, 0.4));
-  pupil.position.z = 1.0;
+  const sclera = new THREE.Mesh(new THREE.SphereGeometry(1.15 * k, 32, 16), mat(0xf2f0ee, 0.35));
+  const iris = new THREE.Mesh(new THREE.SphereGeometry(0.46 * k, 24, 12), mat(0x44546e, 0.3));
+  iris.position.z = 0.78 * k;
+  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.2 * k, 16, 8), mat(0x0c0c0c, 0.4));
+  pupil.position.z = 1.0 * k;
   eg.add(sclera, iris, pupil);
   group.add(eg);
   return eg;
@@ -244,18 +245,32 @@ function makeEye(cx) {
 
 const gltfLoader = new GLTFLoader();
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
-gltfLoader.load("assets3d/mark.glb?v=3", g => {
-  g.scene.traverse(o => { if (o.isMesh) mesh = o; });
-  morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
-  group.add(g.scene);
-  const box = new THREE.Box3().setFromObject(g.scene);
-  const c = box.getCenter(new THREE.Vector3());
-  group.position.set(-c.x, -c.y, -c.z);
-  eyes3d = [makeEye(3.41), makeEye(-3.5)];
-  camera.position.set(0, 1.5, 80);
-  camera.lookAt(0, 0, 0);
-  setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요");
-}, undefined, e => setStatus("석고상 로드 실패: " + e, true));
+// mark/claire 는 같은 ARKit 토폴로지(52 모프타깃)지만 헤드마다 크기·눈 위치가 달라 로드 때 재구성.
+const glbCache = {};
+let sceneNode = null;
+function load3D(name) {
+  const done = g => {
+    if (sceneNode) group.remove(sceneNode);
+    eyes3d.forEach(e => group.remove(e)); eyes3d = [];
+    group.position.set(0, 0, 0);
+    group.updateMatrixWorld(true);                   // .position 변경을 matrixWorld 에 즉시 반영 —
+                                                     // 안 하면 setFromObject 가 이전 헤드 오프셋을 물어 bbox 가 어긋남
+    sceneNode = g.scene;
+    sceneNode.traverse(o => { if (o.isMesh) { mesh = o; o.frustumCulled = false; } });   // 모프 적용 시 컬링 방지
+    morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
+    group.add(sceneNode);
+    const box = new THREE.Box3().setFromObject(sceneNode);
+    const c = box.getCenter(new THREE.Vector3());
+    eyes3d = [makeEye(1, box), makeEye(-1, box)];    // 눈은 head 로컬 bbox 로 배치 후
+    group.position.set(-c.x, -c.y, -c.z);            // 헤드·눈 함께 recenter
+    camera.position.set(0, 1.5, 80); camera.lookAt(0, 0, 0);
+    setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요");
+  };
+  if (glbCache[name]) return done(glbCache[name]);
+  gltfLoader.load(`assets3d/${name}.glb?v=3`, g => { glbCache[name] = g; done(g); },
+    undefined, e => setStatus((name === "claire" ? "여성 석고상" : "석고상") + " 로드 실패: " + e, true));
+}
+// 초기 로드는 캐릭터 선택부에서 현재 selection 으로 한 번만 (mark/claire 이중로드 경쟁 방지)
 
 function resize3d() {
   const r = canvas3d.parentElement.getBoundingClientRect();
@@ -280,19 +295,13 @@ const gaze3d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker(canvas3d), { mul
 // 돼지·졸라맨: assets/sprites 스냅샷 — 입은 코어 makeMouthPicker+비즈메 PNG, 눈 3단계(윙크 가능)
 const cv = $("cv"), ctx2d = cv.getContext("2d");
 const glCanvas = $("gl"), shakeEl = $("shake");
-const CHAR_FILES = {
-  boy: ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open",
-    "eye_L_closed", "eye_R_closed", "pupil_L", "pupil_R"],
-  pig: ["base", "eye_L_open", "eye_R_open", "eye_L_half", "eye_R_half", "eye_L_closed", "eye_R_closed",
-    "mouth_A", "mouth_E", "mouth_I", "mouth_O", "mouth_U", "mouth_M", "mouth_closed", "mouth_smile"],
-  stick: ["base", "eye_L_open", "eye_R_open", "eye_L_half", "eye_R_half", "eye_L_closed", "eye_R_closed",
-    "mouth_A", "mouth_E", "mouth_I", "mouth_O", "mouth_U", "mouth_closed", "mouth_smile"],
-};
+const VECTOR_PARTS = ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open",
+  "eye_L_closed", "eye_R_closed", "pupil_L", "pupil_R"];
+const CHAR_FILES = { boy: VECTOR_PARTS, girl: VECTOR_PARTS };
 let parts = {}, manifest = null;
 const charCache = {};
 const gaze2d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker($("stage2d")), { mulX: 0.9, mulY: 0.6 });
 const headWander = AvatarCore.makeHeadWander();
-const mouthPicker = AvatarCore.makeMouthPicker(W);
 const warp = AvatarCore.makeWarp({
   threeUrl: "./vendor/three.module.js", glCanvas,
   getParts: () => parts, getManifest: () => manifest, W,
@@ -315,23 +324,20 @@ async function loadChar(name) {
 }
 
 // ================= 캐릭터 선택 =================
-// select 값이 단일 진실 — mark=3D / all=내 얼굴+3D+2D 동시 / 나머지=2D (parts+manifest 교체)
+// select 값이 단일 진실 — mark·claire=3D 헤드 / boy·girl=2D 그래픽
 const mode = () => $("charSel").value;
+const is3D = () => mode() === "mark" || mode() === "claire";
 $("charSel").onchange = () => {
   stopRec();   // 녹화 스트림은 모드별 캔버스에 물려 있어 전환 시 종료
-  const m = mode();
-  $("stage3d").style.display = m === "mark" || m === "all" ? "" : "none";
-  $("stage2d").style.display = m !== "mark" ? "" : "none";
-  document.querySelector(".duo").classList.toggle("all", m === "all");
-  if (m === "all") panel.classList.add("on");   // 동시 모드는 내 얼굴 패널이 핵심
-  if (m !== "mark") loadChar(m === "all" ? "boy" : m).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));
+  $("stage3d").style.display = is3D() ? "" : "none";
+  $("stage2d").style.display = is3D() ? "none" : "";
+  if (is3D()) load3D(mode());
+  else loadChar(mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));
 };
-// 딥링크: ?char=boy|pig|stick|all 로 진입 (draw.html·boy.html 이 사용)
+// 딥링크: ?char=mark|claire|boy|girl 로 진입 (draw.html·boy.html 이 사용)
 const deep = new URLSearchParams(location.search).get("char");
-if (deep && [...$("charSel").options].some(o => o.value === deep)) {
-  $("charSel").value = deep;
-  $("charSel").onchange();
-}
+if (deep && [...$("charSel").options].some(o => o.value === deep)) $("charSel").value = deep;
+$("charSel").onchange();   // 현재 selection 을 한 번 로드 (기본 mark 또는 딥링크)
 
 // ================= 렌더 루프 (활성 캐릭터만 그림) =================
 function render(now) {
@@ -342,8 +348,8 @@ function render(now) {
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
   mpanel.draw(W);   // 비교군 — 캐릭터와 같은 프레임의 채널값
 
-  const m = mode();
-  if ((m === "mark" || m === "all") && mesh) {
+  if (is3D()) {
+    if (!mesh) return;
     const inf = mesh.morphTargetInfluences;
     for (const [k, idx] of morphMap) {
       inf[idx] = k === "eyeblinkleft" || k === "eyeblinkright" ? blink : (smooth[k] || 0);
@@ -353,8 +359,8 @@ function render(now) {
     nod = 0.85 * nod + 0.15 * W("jawopen");
     group.rotation.set(userPitch + nod * 0.04, userYaw, 0);
     renderer.render(scene, camera);
+    return;
   }
-  if (m === "mark") return;   // 단독 3D — 녹화는 canvas3d 직접 캡처
 
   // 2D 캐릭터
   if (!parts.base || !manifest) return;
@@ -375,52 +381,25 @@ function render(now) {
                + (manifest.browRange || 0) * 0.8 * (W("browdownleft") + W("browdownright")) / 2;
   draw("brow_L", browUp); draw("brow_R", browUp);
 
-  if (parts.pupil_L) {   // 동공 파츠 有 (소년): 눈 2단계 + 동공 시선
-    if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
-    else {
-      draw("eye_L_open"); draw("eye_R_open");
-      const pr = manifest.pupilRange || 0;
-      drawXY("pupil_L", gzx * pr, gzy * pr); drawXY("pupil_R", gzx * pr, gzy * pr);
-    }
-  } else {               // 동공 無 (돼지·졸라맨): 눈 3단계, 좌우 독립(윙크), 시선은 눈 스프라이트 미세 이동
-    const eye = (side, v) => {
-      const st = v > 0.65 ? "closed" : v > 0.3 ? "half" : "open";
-      drawXY(`eye_${side}_${st}`, st === "open" ? gzx * 4 : 0, st === "open" ? gzy * 3 : 0);
-    };
-    eye("L", Math.max(blinker.value(now), W("eyeblinkleft")));
-    eye("R", Math.max(blinker.value(now), W("eyeblinkright")));
+  if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
+  else {
+    draw("eye_L_open"); draw("eye_R_open");
+    const pr = manifest.pupilRange || 0;
+    drawXY("pupil_L", gzx * pr, gzy * pr); drawXY("pupil_R", gzx * pr, gzy * pr);
   }
+  const jawDy = warp.jawOverlayDy(W("jawopen"), warpOn, manifest);
+  AvatarCore.drawVectorMouth(ctx2d, W, manifest, jawDy);
 
-  if (vectorMouth) {
-    const jawDy = warp.jawOverlayDy(W("jawopen"), warpOn, manifest);
-    AvatarCore.drawVectorMouth(ctx2d, W, manifest, jawDy);
-  } else {
-    const jawDy = (manifest.jawDrop || 0) * W("jawopen");
-    const smiling = (W("mouthsmileleft") + W("mouthsmileright")) / 2 > 0.3;
-    const pick = mouthPicker.pick(now);
-    const name = pick.cur === "closed" && smiling ? "mouth_smile" : "mouth_" + pick.cur;
-    (parts[name] || parts.mouth_closed) && ctx2d.drawImage(parts[name] || parts.mouth_closed, 0, jawDy);
-  }
-
-  if (recCv) {   // 녹화 합성 — 2D 는 두 레이어(gl 워프+cv), 동시 모드는 [내 얼굴 | 석고상 | 소년]
+  if (recCv) {   // 2D 녹화 합성 — 두 레이어(gl 워프 + cv 오버레이)
     const c = recCv.getContext("2d");
-    if (m === "all") {
-      c.fillStyle = "#16161d"; c.fillRect(0, 0, 1200, 400);
-      c.drawImage(mpanel.canvas, 20, 65, 360, 270);   // 내 얼굴 + 랜드마크 478점
-      c.drawImage(canvas3d, 400, 0, 400, 400);
-      c.fillStyle = "#fff"; c.fillRect(800, 0, 400, 400);
-      if (warpOn) c.drawImage(glCanvas, 800, 0, 400, 400);
-      c.drawImage(cv, 800, 0, 400, 400);
-    } else {
-      c.fillStyle = "#fff"; c.fillRect(0, 0, 512, 512);
-      if (warpOn) c.drawImage(glCanvas, 0, 0);
-      c.drawImage(cv, 0, 0);
-    }
+    c.fillStyle = "#fff"; c.fillRect(0, 0, 512, 512);
+    if (warpOn) c.drawImage(glCanvas, 0, 0);
+    c.drawImage(cv, 0, 0);
   }
 }
 
 warp.init();
-loadChar(mode() === "mark" ? "boy" : mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));   // 2D 프리로드
+loadChar(is3D() ? "boy" : mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));   // 2D 프리로드
 requestAnimationFrame(render);
 </script>
 </body>

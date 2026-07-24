@@ -43,6 +43,15 @@
   #status.error { color: #ff7a7a; }
   footer { margin-top: 22px; font-size: .78rem; color: #66667a; line-height: 1.6; }
   footer a { color: #8a8aff; }
+  /* ---- OBS 브라우저 소스용 클린 모드 (?clean=1) ----
+     UI 를 전부 숨기고 배경을 투명하게 만들어, 캐릭터만 방송 화면 위에 얹히게 한다. */
+  body.clean { background: transparent; }
+  body.clean h1, body.clean .row, body.clean #status, body.clean footer, body.clean #panel { display: none !important; }
+  body.clean main { width: 100vw; padding: 0; }
+  body.clean .duo { gap: 0; }
+  body.clean .stage { flex: 1 1 100vmin; max-width: 100vmin; border: 0; border-radius: 0; }
+  /* #stage3d/#stage2d 는 ID 로 배경이 지정돼 있어 같은 특이도(ID+클래스)로 덮어야 한다 */
+  body.clean #stage3d, body.clean #stage2d { background: transparent; }
 </style>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
 </head>
@@ -120,6 +129,13 @@ try {
 
 const $ = id => document.getElementById(id);
 const setStatus = AvatarCore.bindStatus($("status"));
+
+// ---- OBS 브라우저 소스 모드 (?clean=1) ----
+// UI 숨김 + 투명 배경으로 캐릭터만 남긴다. ?auto=1 이면 로드 직후 미러링 자동 시작
+// (OBS 브라우저 소스는 클릭이 없으므로 — 카메라 권한은 OBS 가 자동 허용).
+const Q = new URLSearchParams(location.search);
+const CLEAN = Q.get("clean") === "1";
+if (CLEAN) document.body.classList.add("clean");
 
 
 // ================= 공유: 미러링 + 깜빡임 =================
@@ -219,10 +235,11 @@ $("recBtn").onclick = () => {
 
 // ================= 3D: 석고상 (mark) =================
 const canvas3d = $("cv3d");
-const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true, alpha: CLEAN });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+if (CLEAN) renderer.setClearAlpha(0);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d0d12);
+scene.background = CLEAN ? null : new THREE.Color(0x0d0d12);   // 클린 모드는 투명(OBS 합성용)
 const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 1000);
 scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x2a2018, 1.1));
 const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1.5, 2, 3); scene.add(key);
@@ -373,9 +390,15 @@ $("charSel").onchange = () => {
   else loadChar(mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));
 };
 // 딥링크: ?char=mark|claire|boy|girl 로 진입 (draw.html·boy.html 이 사용)
-const deep = new URLSearchParams(location.search).get("char");
+const deep = Q.get("char");
 if (deep && [...$("charSel").options].some(o => o.value === deep)) $("charSel").value = deep;
 $("charSel").onchange();   // 현재 selection 을 한 번 로드 (기본 mark 또는 딥링크)
+// ?auto=1 — OBS 처럼 클릭이 불가능한 환경에서 미러링 자동 시작 (권한 거부 시 조용히 무시)
+if (Q.get("auto") === "1") {
+  showcase.stop(); clearTimeout(demoTimer);
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; })
+    .catch(() => setStatus("자동 미러링 실패 — 카메라 권한을 확인해주세요", true));
+}
 
 // ================= 렌더 루프 (활성 캐릭터만 그림) =================
 // 머리 회전 부호 — 실사용에서 뒤집혀 보이면 여기만 바꾼다 (?hs=y,p,r 로 즉석 실험 가능)
@@ -404,7 +427,7 @@ function render(now) {
     for (const e of eyes3d) e.rotation.set(gsy * 0.3, gsx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
     // 머리 회전: 토글 ON 이면 웹캠 머리 자세를 전이, OFF 면 표정만 (기존 동작 유지)
-    const h = $("headMove").checked ? mirror.head() : null;
+    const h = ($("headMove").checked || Q.get("head") === "1") ? mirror.head() : null;
     if (h) group.rotation.set(userPitch + SIGN.p * h[1] + nod * 0.04, userYaw + SIGN.y * h[0], SIGN.r * h[2]);
     else group.rotation.set(userPitch + nod * 0.04, userYaw, 0);
     renderer.render(scene, camera);
@@ -420,7 +443,7 @@ function render(now) {
   ctx2d.clearRect(0, 0, 512, 512);
   const draw = (n, dyy = 0) => parts[n] && ctx2d.drawImage(parts[n], 0, dyy);
   const drawXY = (n, dx, dyy) => parts[n] && ctx2d.drawImage(parts[n], dx, dyy);
-  if (!warpOn) { ctx2d.fillStyle = "#fff"; ctx2d.fillRect(0, 0, 512, 512); draw("base"); }
+  if (!warpOn) { if (!CLEAN) { ctx2d.fillStyle = "#fff"; ctx2d.fillRect(0, 0, 512, 512); } draw("base"); }
   const [gzx, gzy] = gaze2d(0, W);
 
   const browUp = -(manifest.browRange || 0) * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2)

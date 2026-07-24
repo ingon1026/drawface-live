@@ -229,7 +229,7 @@ const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1.5, 2, 
 const rim = new THREE.DirectionalLight(0x77aaff, 1.0); rim.position.set(-2, 1, -2); scene.add(rim);
 const group = new THREE.Group();
 scene.add(group);
-let mesh = null, eyes3d = [], morphMap = [];
+let morphMeshes = [], eyes3d = [];   // 모프 구동 대상(메시별 influences+이름맵)
 
 // 눈알(안구 메시가 없는 헤드의 소켓 채움) — 위치·크기를 헤드 bbox 에서 유도해 mark/claire 공용.
 // mark 로 보정한 bbox 분율: 눈은 중심에서 (±0.111·sx, +0.151·sy, +0.284·sz), 스케일 sy/41.5.
@@ -256,12 +256,16 @@ gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 //  RPM: Ready Player Me CDN 에서 런타임 로드(리포에 재배포하지 않음 — 원 제공자 CDN 이 정식 사용법).
 //       반신이라 상단 일부만 머리로 잡아 프레이밍하고, 눈·머리카락·옷이 이미 있어 구체 불필요
 //       (시선도 eyeLook 모프로 직접 돌아간다).
-const RPM_Q = "?morphTargets=ARKit&textureAtlas=1024";
+// RPM 아바타는 jsDelivr(GitHub) 에 공개된 것을 런타임 로드한다 — 우리 리포에 재배포하지 않고,
+// 이미 three.js·디코더를 받아오는 CDN 이라 도달성·CORS 가 검증돼 있다(models.readyplayer.me 는 실패).
+const GH = "https://cdn.jsdelivr.net/gh/";
 const HEADS = {
   mark:   { url: "assets3d/mark.glb?v=3",   label: "석고상 남성", eyeSpheres: true,  headFrac: 1 },
   claire: { url: "assets3d/claire.glb?v=3", label: "석고상 여성", eyeSpheres: true,  headFrac: 1 },
-  rpmA:   { url: "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb" + RPM_Q, label: "RPM 아바타 A", eyeSpheres: false, headFrac: 0.22 },
-  rpmB:   { url: "https://models.readyplayer.me/622952275de1ae64c9ebe969.glb" + RPM_Q, label: "RPM 아바타 B", eyeSpheres: false, headFrac: 0.22 },
+  rpmA:   { url: GH + "AgoraIO-Community/agora-mediapipe-readyplayerme@main/public/6644d711e53a2fb55928d72e.glb",
+            label: "아바타 A", eyeSpheres: false, headFrac: 0.22 },
+  rpmB:   { url: GH + "met4citizen/TalkingHead@main/avatars/brunette.glb",
+            label: "아바타 B", eyeSpheres: false, headFrac: 0.22 },
 };
 const glbCache = {};
 let sceneNode = null, loaded3D = null;   // 현재 화면에 올라간 3D 헤드(로드 실패 시 되돌리기용)
@@ -274,11 +278,16 @@ function load3D(name) {
     group.updateMatrixWorld(true);                   // .position 변경을 matrixWorld 에 즉시 반영 —
                                                      // 안 하면 setFromObject 가 이전 헤드 오프셋을 물어 bbox 가 어긋남
     sceneNode = g.scene;
-    mesh = null;
-    // 모프타깃을 가진 메시를 고른다 (RPM 은 헤드 외 메시가 섞여 있을 수 있음)
-    sceneNode.traverse(o => { if (o.isMesh && o.morphTargetInfluences) { mesh = o; o.frustumCulled = false; } });
-    if (!mesh) { setStatus(cfg.label + ": 표정 모프타깃이 없는 모델입니다", true); return; }
-    morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
+    // 모프타깃을 가진 메시를 전부 모은다 — RPM 은 머리·눈·이빨이 각각 모프를 갖고 있어
+    // 하나만 구동하면 눈·이빨이 따로 논다 (석고는 단일 메시라 결과적으로 1개).
+    morphMeshes = [];
+    sceneNode.traverse(o => {
+      if (!o.isMesh || !o.morphTargetInfluences) return;
+      o.frustumCulled = false;   // 모프 적용 시 컬링 방지
+      morphMeshes.push({ inf: o.morphTargetInfluences,
+        map: Object.entries(o.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]) });
+    });
+    if (!morphMeshes.length) { setStatus(cfg.label + ": 표정 모프타깃이 없는 모델입니다", true); return; }
     group.add(sceneNode);
     const box = new THREE.Box3().setFromObject(sceneNode);
     const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
@@ -385,10 +394,11 @@ function render(now) {
   mpanel.draw(W);   // 비교군 — 캐릭터와 같은 프레임의 채널값
 
   if (is3D()) {
-    if (!mesh) return;
-    const inf = mesh.morphTargetInfluences;
-    for (const [k, idx] of morphMap) {
-      inf[idx] = k === "eyeblinkleft" || k === "eyeblinkright" ? blink : (smooth[k] || 0);
+    if (!morphMeshes.length) return;
+    for (const { inf, map } of morphMeshes) {
+      for (const [k, idx] of map) {
+        inf[idx] = k === "eyeblinkleft" || k === "eyeblinkright" ? blink : (smooth[k] || 0);
+      }
     }
     const [gsx, gsy] = gaze3d(0, W);
     for (const e of eyes3d) e.rotation.set(gsy * 0.3, gsx * 0.4, 0);

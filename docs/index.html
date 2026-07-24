@@ -71,7 +71,7 @@
 let THREE, GLTFLoader;
 try {
   THREE = await import("three");
-  ({ GLTFLoader } = await import("./vendor/GLTFLoader.js"));
+  ({ GLTFLoader } = await import("./vendor/GLTFLoader.js?v=1"));
 } catch (e) {
   document.getElementById("status").textContent = "3D 모듈 로드 실패: " + e.message;
   throw e;
@@ -126,7 +126,7 @@ function makeEye(cx) {
   return eg;
 }
 
-new GLTFLoader().load("assets3d/mark.glb", g => {
+new GLTFLoader().load("assets3d/mark.glb?v=1", g => {
   g.scene.traverse(o => { if (o.isMesh) mesh = o; });
   morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
   group.add(g.scene);

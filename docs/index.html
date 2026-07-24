@@ -71,9 +71,21 @@
 let THREE, GLTFLoader;
 try {
   THREE = await import("three");
-  ({ GLTFLoader } = await import("./vendor/GLTFLoader.js?v=1"));
+  // GLTFLoader 는 CDN(jsDelivr, three r160 동일 버전) 우선 — Pages 신규 경로의 엣지 404 캐시를
+  // 회피한다(MediaPipe 도 같은 CDN 으로 로드 중이라 도달성 검증됨). 실패 시 로컬 벤더 폴백.
+  try {
+    ({ GLTFLoader } = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js"));
+  } catch {
+    ({ GLTFLoader } = await import("./vendor/GLTFLoader.js?v=2"));
+  }
 } catch (e) {
-  document.getElementById("status").textContent = "3D 모듈 로드 실패: " + e.message;
+  // 진짜 원인 추적용: 실패한 리소스의 실제 HTTP 상태를 상태줄에 노출
+  let detail = e.message;
+  try {
+    const r = await fetch("./vendor/GLTFLoader.js?v=2", { cache: "reload" });
+    detail += ` (로컬 fetch: HTTP ${r.status})`;
+  } catch (fe) { detail += ` (로컬 fetch: ${fe.message})`; }
+  document.getElementById("status").textContent = "3D 모듈 로드 실패: " + detail;
   throw e;
 }
 
@@ -126,7 +138,7 @@ function makeEye(cx) {
   return eg;
 }
 
-new GLTFLoader().load("assets3d/mark.glb?v=1", g => {
+new GLTFLoader().load("assets3d/mark.glb?v=2", g => {
   g.scene.traverse(o => { if (o.isMesh) mesh = o; });
   morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
   group.add(g.scene);

@@ -14,9 +14,19 @@
     margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     font-family: 'Pretendard', 'Noto Sans KR', sans-serif; background: #16161d; color: #e8e8ef;
   }
-  main { width: min(560px, 94vw); padding: 24px 0 48px; }
+  main { width: min(900px, 96vw); padding: 24px 0 48px; }
   h1 { font-size: 1.25rem; font-weight: 700; margin: 12px 0; }
-  .stage { width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid #2a2a35; position: relative; }
+  .duo { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .stage { flex: 1 1 380px; max-width: 560px; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid #2a2a35; position: relative; }
+  /* 분석 패널: 캐릭터 옆에서 내 얼굴 + MediaPipe 랜드마크 + 표정 채널값을 비교군으로 보여준다 */
+  #panel { flex: 0 0 280px; display: none; }
+  #panel.on { display: block; }
+  #panel h2 { font-size: .85rem; font-weight: 600; color: #9a9ab0; margin: 2px 0 8px; }
+  #camCv { width: 100%; border-radius: 12px; border: 1px solid #2a2a35; background: #0d0d12; display: block; }
+  .ch { margin-top: 7px; font-size: .76rem; color: #9a9ab0; }
+  .ch .val { float: right; color: #e8e8ef; font-variant-numeric: tabular-nums; }
+  .ch .track { height: 8px; background: #23232e; border-radius: 4px; position: relative; margin-top: 3px; }
+  .ch .fill { position: absolute; top: 0; bottom: 0; background: #5b8cff; border-radius: 4px; }
   #stage3d { background: #0d0d12; cursor: grab; }
   #stage2d { background: #fff; }
   .warp-shake { position: absolute; inset: 0; will-change: transform; }
@@ -40,14 +50,22 @@
 <main>
   <h1>🪞 DrawFace Live — 웹캠 표정 미러링</h1>
 
-  <div class="stage" id="stage3d"><canvas id="cv3d"></canvas></div>
-  <div class="stage" id="stage2d" style="display:none"><div class="warp-shake" id="shake">
-    <canvas id="gl" width="512" height="512"></canvas>
-    <canvas id="cv" width="512" height="512"></canvas>
-  </div></div>
+  <div class="duo">
+    <div class="stage" id="stage3d"><canvas id="cv3d"></canvas></div>
+    <div class="stage" id="stage2d" style="display:none"><div class="warp-shake" id="shake">
+      <canvas id="gl" width="512" height="512"></canvas>
+      <canvas id="cv" width="512" height="512"></canvas>
+    </div></div>
+    <div id="panel">
+      <h2>📊 비교군 — 내 얼굴 → MediaPipe 채널</h2>
+      <canvas id="camCv" width="320" height="240"></canvas>
+      <div id="chBars"></div>
+    </div>
+  </div>
 
   <div class="row">
     <button id="mirrorBtn">🪞 미러링 시작</button>
+    <button class="alt" id="panelBtn">📊 분석</button>
     <select id="charSel">
       <option value="mark">🗿 석고상 (NVIDIA mark · 3D)</option>
       <option value="boy">🎨 소년 (그래픽 · 2D)</option>
@@ -103,9 +121,61 @@ $("mirrorBtn").onclick = () => {
     mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "🪞 미러링 시작";
     return;
   }
-  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; })
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; panel.classList.add("on"); })
     .catch(e => { mirror.stop(); $("mirrorBtn").classList.remove("on"); setStatus("미러링 실패: " + e.message, true); });
 };
+
+// ================= 분석 패널: 내 얼굴에 알고리즘이 적용된 모습 (비교군) =================
+// 웹캠(거울 반전) + 478점 랜드마크(홍채 10점 강조) + 캐릭터를 실제로 구동하는 채널값 막대
+const panel = $("panel"), camCv = $("camCv"), camCtx = camCv.getContext("2d");
+$("panelBtn").onclick = () => panel.classList.toggle("on");
+const CHS = [
+  ["입 벌림 jawOpen", () => W("jawopen")],
+  ["미소 mouthSmile", () => (W("mouthsmileleft") + W("mouthsmileright")) / 2],
+  ["오므림 mouthPucker", () => W("mouthpucker")],
+  ["눈 감음 eyeBlink", () => (W("eyeblinkleft") + W("eyeblinkright")) / 2],
+  ["눈썹 browInnerUp", () => W("browinnerup")],
+  // 시선 2개는 makeGaze 와 동일 결합식 — 홍채 트래킹 결과가 그대로 보인다 (양방향 막대)
+  ["시선 가로 eyeLookX", () => (W("eyelookoutright") + W("eyelookinleft") - W("eyelookoutleft") - W("eyelookinright")) / 2, true],
+  ["시선 세로 eyeLookY", () => (W("eyelookdownleft") + W("eyelookdownright") - W("eyelookupleft") - W("eyelookupright")) / 2, true],
+];
+const bars = CHS.map(([label, , bipolar]) => {
+  const row = document.createElement("div");
+  row.className = "ch";
+  row.innerHTML = `<span>${label}</span><span class="val"></span><div class="track"><div class="fill"></div></div>`;
+  $("chBars").appendChild(row);
+  return { fill: row.querySelector(".fill"), val: row.querySelector(".val"), bipolar };
+});
+function drawPanel() {
+  if (!panel.classList.contains("on")) return;
+  const d = mirror.debug();
+  const w = camCv.width, h = camCv.height;
+  camCtx.fillStyle = "#0d0d12"; camCtx.fillRect(0, 0, w, h);
+  if (!mirror.on || !d.video || d.video.readyState < 2) {
+    camCtx.fillStyle = "#9a9ab0"; camCtx.font = "13px sans-serif"; camCtx.textAlign = "center";
+    camCtx.fillText("미러링을 시작하면 표시됩니다", w / 2, h / 2);
+  } else {
+    camCtx.save(); camCtx.scale(-1, 1); camCtx.drawImage(d.video, -w, 0, w, h); camCtx.restore();
+    if (d.lm) {
+      camCtx.fillStyle = "rgba(91,140,255,.85)";
+      for (let i = 0; i < 468; i++) camCtx.fillRect((1 - d.lm[i].x) * w - .5, d.lm[i].y * h - .5, 1.5, 1.5);
+      camCtx.fillStyle = "#ffb03a";   // 홍채 10점 = 시선 계산 입력
+      for (let i = 468; i < d.lm.length; i++) camCtx.fillRect((1 - d.lm[i].x) * w - 1.5, d.lm[i].y * h - 1.5, 3, 3);
+    }
+  }
+  CHS.forEach(([, get], i) => {
+    const v = get(), b = bars[i];
+    b.val.textContent = v.toFixed(2);
+    if (b.bipolar) {
+      const p = Math.max(-1, Math.min(1, v)) * 50;
+      b.fill.style.left = p < 0 ? 50 + p + "%" : "50%";
+      b.fill.style.width = Math.abs(p) + "%";
+      b.fill.style.background = "#ffb03a";
+    } else {
+      b.fill.style.left = "0"; b.fill.style.width = Math.min(1, v) * 100 + "%";
+    }
+  });
+}
 
 // ================= 3D: 석고상 (mark) =================
 const canvas3d = $("cv3d");
@@ -210,6 +280,7 @@ function render(now) {
   smooth = {};
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
+  drawPanel();   // 비교군 — 캐릭터와 같은 프레임의 채널값
 
   if (mode() === "mark") {
     if (!mesh) return;

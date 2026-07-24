@@ -15,6 +15,10 @@
     font-family: 'Pretendard', 'Noto Sans KR', sans-serif; background: #16161d; color: #e8e8ef;
   }
   main { width: min(900px, 96vw); padding: 24px 0 48px; }
+  /* 모두(동시 구동) 모드: 내 얼굴 → 석고상 → 소년 순서로 나란히 */
+  main:has(.duo.all) { width: min(1340px, 97vw); }
+  .duo.all .stage { flex: 1 1 300px; max-width: 420px; }
+  .duo.all #panel { flex: 1 1 280px; max-width: 420px; order: -1; }
   h1 { font-size: 1.25rem; font-weight: 700; margin: 12px 0; }
   .duo { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
   .stage { flex: 1 1 380px; max-width: 560px; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid #2a2a35; position: relative; }
@@ -66,6 +70,7 @@
     <select id="charSel">
       <option value="mark">🗿 석고상 (NVIDIA mark · 3D)</option>
       <option value="boy">🎨 소년 (그래픽 · 2D)</option>
+      <option value="all">🧩 모두 — 내 얼굴+석고상+소년 동시</option>
       <option value="pig">🐷 돼지 (손그림 · 2D)</option>
       <option value="stick">✏️ 졸라맨 (낙서 · 2D)</option>
     </select>
@@ -189,7 +194,9 @@ $("recBtn").onclick = () => {
   let stream;
   if (mode() === "mark") stream = canvas3d.captureStream(30);
   else {
-    recCv = document.createElement("canvas"); recCv.width = 512; recCv.height = 512;
+    recCv = document.createElement("canvas");
+    if (mode() === "all") { recCv.width = 1200; recCv.height = 400; }   // [내 얼굴|석고상|소년]
+    else { recCv.width = 512; recCv.height = 512; }
     stream = recCv.captureStream(30);
   }
   const chunks = [];
@@ -311,15 +318,18 @@ async function loadChar(name) {
 }
 
 // ================= 캐릭터 선택 =================
-// select 값이 단일 진실 — mark=3D 씬, 나머지=2D (parts+manifest 교체)
+// select 값이 단일 진실 — mark=3D / all=내 얼굴+3D+2D 동시 / 나머지=2D (parts+manifest 교체)
 const mode = () => $("charSel").value;
 $("charSel").onchange = () => {
-  stopRec();   // 녹화 스트림은 캐릭터별 캔버스에 물려 있어 전환 시 종료
-  $("stage3d").style.display = mode() === "mark" ? "" : "none";
-  $("stage2d").style.display = mode() === "mark" ? "none" : "";
-  if (mode() !== "mark") loadChar(mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));
+  stopRec();   // 녹화 스트림은 모드별 캔버스에 물려 있어 전환 시 종료
+  const m = mode();
+  $("stage3d").style.display = m === "mark" || m === "all" ? "" : "none";
+  $("stage2d").style.display = m !== "mark" ? "" : "none";
+  document.querySelector(".duo").classList.toggle("all", m === "all");
+  if (m === "all") panel.classList.add("on");   // 동시 모드는 내 얼굴 패널이 핵심
+  if (m !== "mark") loadChar(m === "all" ? "boy" : m).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));
 };
-// 딥링크: ?char=boy|pig|stick 으로 진입 (draw.html·boy.html 이 사용)
+// 딥링크: ?char=boy|pig|stick|all 로 진입 (draw.html·boy.html 이 사용)
 const deep = new URLSearchParams(location.search).get("char");
 if (deep && [...$("charSel").options].some(o => o.value === deep)) {
   $("charSel").value = deep;
@@ -335,8 +345,8 @@ function render(now) {
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
   mpanel.draw(W);   // 비교군 — 캐릭터와 같은 프레임의 채널값
 
-  if (mode() === "mark") {
-    if (!mesh) return;
+  const m = mode();
+  if ((m === "mark" || m === "all") && mesh) {
     const inf = mesh.morphTargetInfluences;
     for (const [k, idx] of morphMap) {
       inf[idx] = k === "eyeblinkleft" || k === "eyeblinkright" ? blink : (smooth[k] || 0);
@@ -346,8 +356,8 @@ function render(now) {
     nod = 0.85 * nod + 0.15 * W("jawopen");
     group.rotation.set(userPitch + nod * 0.04, userYaw, 0);
     renderer.render(scene, camera);
-    return;
   }
+  if (m === "mark") return;   // 단독 3D — 녹화는 canvas3d 직접 캡처
 
   // 2D 캐릭터
   if (!parts.base || !manifest) return;
@@ -395,11 +405,20 @@ function render(now) {
     (parts[name] || parts.mouth_closed) && ctx2d.drawImage(parts[name] || parts.mouth_closed, 0, jawDy);
   }
 
-  if (recCv) {   // 2D 녹화 — 두 레이어(gl 워프 + cv 오버레이) 합성
+  if (recCv) {   // 녹화 합성 — 2D 는 두 레이어(gl 워프+cv), 동시 모드는 [내 얼굴 | 석고상 | 소년]
     const c = recCv.getContext("2d");
-    c.fillStyle = "#fff"; c.fillRect(0, 0, 512, 512);
-    if (warpOn) c.drawImage(glCanvas, 0, 0);
-    c.drawImage(cv, 0, 0);
+    if (m === "all") {
+      c.fillStyle = "#16161d"; c.fillRect(0, 0, 1200, 400);
+      c.drawImage(mpanel.canvas, 20, 65, 360, 270);   // 내 얼굴 + 랜드마크 478점
+      c.drawImage(canvas3d, 400, 0, 400, 400);
+      c.fillStyle = "#fff"; c.fillRect(800, 0, 400, 400);
+      if (warpOn) c.drawImage(glCanvas, 800, 0, 400, 400);
+      c.drawImage(cv, 800, 0, 400, 400);
+    } else {
+      c.fillStyle = "#fff"; c.fillRect(0, 0, 512, 512);
+      if (warpOn) c.drawImage(glCanvas, 0, 0);
+      c.drawImage(cv, 0, 0);
+    }
   }
 }
 

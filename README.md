@@ -1,63 +1,70 @@
-# 🐷 DrawFace Live
+# 🪞 DrawFace Live
 
-**손그림 한 장이 웹캠 표정을 실시간으로 따라 합니다.**
-엔진은 둘 — 눈·입 조각을 바꿔 끼우는 **스프라이트 오버레이**(웹, 기본)와 그림 자체를
-메시로 구부리는 **ARAP 워프**(데스크톱, 차세대). 둘 다 원본 그림에 없는 픽셀을 만들지
-않으므로 화풍이 변형 없이 유지됩니다.
+**웹캠 표정을 캐릭터가 실시간으로 따라 합니다 — 전부 브라우저 안에서, 서버·설치·전송 없음.**
+석고상(3D)과 소년 그래픽(2D)은 들어가자마자 시연되고, 내 손그림 한 장도 4클릭이면 캐릭터가 됩니다.
 
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
 ![데모 — 표정을 따라 하는 캐릭터](docs/img/demo.gif)
 
-<sub>예시 캐릭터로 렌더링한 표정 시퀀스(윙크·깜빡임·입 모양·미소·고개). 웹캠을 켜면 이 동작이 내 표정을 따라 실시간으로 재생됩니다.</sub>
+<sub>표정 시퀀스(윙크·깜빡임·입 모양·미소·고개). 웹캠을 켜면 내 표정이 실시간으로 재생됩니다.</sub>
 
-![표정 상태](docs/img/pig_states.png)
+## ▶ 바로 체험 — https://ingon1026.github.io/drawface-live/
 
-## ▶ 바로 체험
+| 입구 | 캐릭터 | 엔진 |
+| --- | --- | --- |
+| **메인** (미러링 스튜디오) | 🗿 석고상 (NVIDIA mark · 3D) · 🎨 소년 (2D) | MediaPipe 표정 채널 → 3D 모프타깃 / 2D 벡터 입·워프 |
+| [draw.html](https://ingon1026.github.io/drawface-live/draw.html) | ✏️ **내 손그림** (드래그앤드롭 + 4클릭) | 결정론 워프 — 화풍 100% 보존 |
+| 로컬 GPU ([아래](#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측)) | 🖼 초상화·표준 비율 일러스트 | LivePortrait TensorRT ≈30fps |
 
-**https://ingon1026.github.io/drawface-live/** — 메인은 트랙 허브(그래픽·손그림·초상화·석고상).
-손그림 앱은 [drawface-live/draw.html](https://ingon1026.github.io/drawface-live/draw.html),
-소년 그래픽은 [drawface-live/boy.html](https://ingon1026.github.io/drawface-live/boy.html)로 바로 열립니다.
+1. **🪞 미러링 시작** → 카메라 허용 → 정면·무표정으로 1초 캘리브레이션
+2. 캐릭터가 입 모양·미소·눈썹·깜빡임·**눈동자(시선)** 를 따라 합니다 — 드롭다운으로 석고상↔소년 전환
+3. **📊 분석** — 캐릭터 옆에 내 얼굴 + 랜드마크 478점(홍채 강조) + 실제 구동 채널값이 비교군으로 표시
 
-1. (손그림 앱) 그림 파일을 **드래그앤드롭** — 얼굴 자동 인식이 눈·입 위치를 찾아줍니다 (실패 시 4번 클릭)
-2. **시작** → 웹캠 허용 → 정면·무표정으로 잠깐 캘리브레이션
-3. 끝 — 윙크, 입 모양(아·에·이·오·우), 미소, 고개 움직임이 그림에 실시간 반영
-
-그림이 아직 없으면 **예시 캐릭터로 체험**을 눌러 바로 시작할 수 있습니다. 새 그림은
-저장 전에 기본·눈 감기·미소·입 벌리기 결과를 확인하고 위치를 다시 조정할 수 있으며,
-실행 중 **녹화 시작**을 누르면 결과 캔버스만 WebM 영상으로 저장합니다.
-
-추적·합성 전부 브라우저 안에서 실행되고, 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
-
-3D 미러링(NVIDIA A2F mark 헤드)은 **메인 페이지에서 바로** 체험합니다 — mark 헤드는
-[Maya-ACE](https://github.com/NVIDIA/Maya-ACE)(MIT) 파생으로 라이선스 확인 후 고지
-포함([`docs/assets3d/LICENSE-mark.txt`](docs/assets3d/LICENSE-mark.txt)) 재배포합니다.
+## 어떻게 움직이나
 
 ```mermaid
 flowchart LR
-    A[Webcam] --> B["MediaPipe Face Landmarker<br/>랜드마크 478점 · blendshape 52채널"]
-    B --> C["중립 캘리브레이션<br/>EMA · 이중 임계 히스테리시스"]
-    C --> D["눈 3단계 · 비즈메 선택<br/>2.5D 머리 변환"]
-    D --> E["스프라이트 알파 합성<br/>원본 그림 위 출력"]
+    A[웹캠] --> B["MediaPipe FaceLandmarker<br/>478점 랜드마크 + 52채널 blendshape<br/>(브라우저 WASM·GPU)"]
+    B --> C["중립 캘리브레이션 30프레임<br/>채널 게인 · EMA 평활"]
+    B --> G["홍채 10점(468~477)<br/>→ 정밀 시선 gx·gy"]
+    G --> C
+    C --> D["ARKit 표정 채널<br/>jawOpen · eyeBlink · eyeLook…"]
+    D --> E["3D: mark 모프타깃 52개 직결"]
+    D --> F["2D: 벡터 입 + WebGL 워프 + 동공"]
 ```
+
+- **시선(눈동자)**: blendshape 의 eyeLook 은 신호가 거칠어, **홍채 랜드마크가 눈꼬리·눈꺼풀
+  사이 어느 비율 지점인지**로 직접 계산해 대체 — 별도 모델 0, 머리 회전 1차 자체 보정,
+  눈 감으면 직전 시선 유지(깜빡임 널뜀 방지)
+- **채널 표준이 핵심**: MediaPipe 채널 이름과 mark 헤드 모프타깃 이름이 같은 ARKit 표준이라
+  1:1 직결 — 렌더러(3D/2D)는 같은 채널을 소비하므로 캐릭터 전환이 드롭다운 하나
+- mark 헤드 © NVIDIA — [Maya-ACE](https://github.com/NVIDIA/Maya-ACE)(MIT) 파생,
+  고지 포함([`docs/assets3d/LICENSE-mark.txt`](docs/assets3d/LICENSE-mark.txt)) 재배포
 
 ## 표정 매핑
 
-| 입력 (blendshape) | 출력 |
+| 입력 | 출력 |
 | --- | --- |
-| `eyeBlinkLeft/Right` | 눈 open / half / closed — 좌우 독립 윙크, 히스테리시스로 떨림 방지 |
-| `jawOpen` 크기 | 입 I → E → A 단계 전환 |
-| `mouthPucker` / `mouthFunnel` | U / O |
-| `mouthSmile` (입 다문 상태) | smile |
-| 눈썹·시선 채널 | 눈썹 오프셋·동공 이동 (스프라이트 있는 캐릭터) |
-| 얼굴 변환 행렬 | 캔버스 2.5D 이동·회전 |
-| 얼굴 소실 | 표정 유지 후 중립으로 감쇠 복귀 |
+| `eyeBlinkLeft/Right` | 눈 감김 — 좌우 독립 윙크, 히스테리시스로 떨림 방지 |
+| `jawOpen` 크기 | 입 개방 I → E → A (2D 벡터 입 · 3D 턱 모프) |
+| `mouthPucker` / `mouthFunnel` | 오므림 U / O |
+| `mouthSmile` | 미소 (입꼬리) |
+| 홍채 랜드마크 → `eyeLook` 8채널 | 2D 동공 이동 · 3D 눈알 회전 |
+| 눈썹 채널 | 눈썹 오프셋 |
+| 얼굴 소실 | 표정 유지 후 중립으로 자연 복귀 |
 
-## 새 캐릭터 = 그림 1장
+## 내 손그림 캐릭터 만들기 ([draw.html](https://ingon1026.github.io/drawface-live/draw.html))
 
-필요한 손작업은 **눈·입 위치 지정뿐** — 나머지 표정은 그림 자신의 획을 기하 변형해 자동 생성됩니다
-(잉크 색·선 두께까지 실제 획에서 샘플링, 새 그림을 "생성"하지 않음).
+1. 그림 파일 **드래그앤드롭** — 얼굴 자동 인식이 눈·입 위치를 찾아줍니다 (실패 시 4번 클릭)
+2. 저장 전에 기본·눈 감기·미소·입 벌리기 미리보기로 위치 재조정
+3. **시작** → 표정이 그림에 실시간 반영 · **녹화**를 누르면 결과 캔버스만 WebM 저장
+
+그림이 없으면 **예시 캐릭터로 체험**으로 바로. 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
+
+필요한 손작업은 **눈·입 위치 지정뿐** — 나머지 표정은 그림 자신의 획을 기하 변형해 자동
+생성됩니다(잉크 색·선 두께까지 실제 획에서 샘플링, 새 그림을 "생성"하지 않음).
 
 수제 비즈메(위) vs 자동 파생(아래) — 수제 파일이 있으면 항상 우선:
 
@@ -66,44 +73,6 @@ flowchart LR
 입이 그려져 있지 않은 캐릭터도 manifest 선언만으로 전체 세트가 나옵니다:
 
 ![stick 자동 파생](docs/img/stick_auto.png)
-
-## 데스크톱 버전 (Python · WSL2/Linux)
-
-같은 파이프라인의 네이티브 구현. 웹캠은 usbipd로 WSL에 attach해 사용합니다.
-
-```bash
-bash scripts/setup.sh                          # venv + 모델 + 스프라이트 (idempotent)
-PYTHONPATH= .venv/bin/python -m app.ui         # 컨트롤 패널 — 스프라이트 모드 (캐릭터·카메라 선택)
-PYTHONPATH= .venv/bin/python -m app.onboard <그림> <이름>   # 4클릭 온보딩 도구
-
-# ARAP 워프 모드 (아래 "ARAP 워프 모드" 참고)
-PYTHONPATH= .venv/bin/python -m app.warp_live --image <그림.png>            # 얼굴 검출되는 그림
-PYTHONPATH= .venv/bin/python -m app.warp_live --character assets/sprites/<이름>  # 4클릭 낙서 캐릭터
-
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  # 테스트
-```
-
-> ROS 등 전역 pytest 플러그인이 설치된 환경에서도 프로젝트 테스트만 실행하도록
-> `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`을 붙입니다.
-
-영상 창 키: `q` 종료 · `c` 재캘리브레이션 · `m` 미러 전환.
-임계값·게인은 전부 [`configs/app.yaml`](configs/app.yaml)에서 조정.
-스프라이트 규약: [`assets/sprites/README.md`](assets/sprites/README.md)
-
-> 카메라는 한쪽만 씁니다 — 웹앱은 Windows 카메라, 파이썬 앱은 WSL attach(`usbipd attach --wsl --busid <id>`).
-
-### 카메라가 안 잡힐 때 (`/dev/video*` 없음)
-
-**attach는 Windows 재부팅마다 풀립니다.** 커널 문제가 아니라 십중팔구 이것입니다 — PowerShell(관리자)에서:
-
-```powershell
-usbipd list                        # RealSense D455 의 BUSID 확인 (STATE 가 Shared 여도 attach 는 별도)
-usbipd attach --wsl --busid 2-1    # 그 순간 WSL 에 /dev/video0~5 생성
-```
-
-- WSL 쪽 확인: `ls /dev/video*` — 권한이 `crw-rw-rw-`라 sudo 불필요
-- 노드 판별(D455): **video4 = 깨끗한 RGB**(`configs/app.yaml`의 `index: 4`), video2 는 IR 도트 혼입, video0 은 depth
-- 최초 1회만: `usbipd bind --busid 2-1` (Shared 로 만들기). 이후 재부팅엔 attach 만 다시
 
 ## 왜 결정론 방식인가 — 신경망 실측 비교
 
@@ -204,6 +173,44 @@ PYTHONPATH=. .venv/bin/python scripts/warp_demo.py --image <그림.png> --out ou
   아니면 박스 루트로. 낙서는 계속 박스 루트.
 - **유휴 모션**: 얼굴이 정지·소실돼도 살아 있게 — 미세한 호흡 흔들림(pitch 사인파)과
   4~7초 무깜빡임 시 자동 깜빡임. 설정은 양쪽 `idle:` 섹션.
+
+## 데스크톱 버전 (Python · WSL2/Linux)
+
+같은 파이프라인의 네이티브 구현. 웹캠은 usbipd로 WSL에 attach해 사용합니다.
+
+```bash
+bash scripts/setup.sh                          # venv + 모델 + 스프라이트 (idempotent)
+PYTHONPATH= .venv/bin/python -m app.ui         # 컨트롤 패널 — 스프라이트 모드 (캐릭터·카메라 선택)
+PYTHONPATH= .venv/bin/python -m app.onboard <그림> <이름>   # 4클릭 온보딩 도구
+
+# ARAP 워프 모드 (아래 "ARAP 워프 모드" 참고)
+PYTHONPATH= .venv/bin/python -m app.warp_live --image <그림.png>            # 얼굴 검출되는 그림
+PYTHONPATH= .venv/bin/python -m app.warp_live --character assets/sprites/<이름>  # 4클릭 낙서 캐릭터
+
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  # 테스트
+```
+
+> ROS 등 전역 pytest 플러그인이 설치된 환경에서도 프로젝트 테스트만 실행하도록
+> `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`을 붙입니다.
+
+영상 창 키: `q` 종료 · `c` 재캘리브레이션 · `m` 미러 전환.
+임계값·게인은 전부 [`configs/app.yaml`](configs/app.yaml)에서 조정.
+스프라이트 규약: [`assets/sprites/README.md`](assets/sprites/README.md)
+
+> 카메라는 한쪽만 씁니다 — 웹앱은 Windows 카메라, 파이썬 앱은 WSL attach(`usbipd attach --wsl --busid <id>`).
+
+### 카메라가 안 잡힐 때 (`/dev/video*` 없음)
+
+**attach는 Windows 재부팅마다 풀립니다.** 커널 문제가 아니라 십중팔구 이것입니다 — PowerShell(관리자)에서:
+
+```powershell
+usbipd list                        # RealSense D455 의 BUSID 확인 (STATE 가 Shared 여도 attach 는 별도)
+usbipd attach --wsl --busid 2-1    # 그 순간 WSL 에 /dev/video0~5 생성
+```
+
+- WSL 쪽 확인: `ls /dev/video*` — 권한이 `crw-rw-rw-`라 sudo 불필요
+- 노드 판별(D455): **video4 = 깨끗한 RGB**(`configs/app.yaml`의 `index: 4`), video2 는 IR 도트 혼입, video0 은 depth
+- 최초 1회만: `usbipd bind --busid 2-1` (Shared 로 만들기). 이후 재부팅엔 attach 만 다시
 
 ## 프라이버시
 

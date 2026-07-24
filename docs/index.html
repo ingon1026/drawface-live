@@ -66,9 +66,14 @@
     <select id="charSel">
       <option value="mark">🗿 석고상 남성 (NVIDIA mark · 3D)</option>
       <option value="claire">🗿 석고상 여성 (NVIDIA claire · 3D)</option>
+      <option value="rpmA">🧑 아바타 A (Ready Player Me · 3D)</option>
+      <option value="rpmB">🧑 아바타 B (Ready Player Me · 3D)</option>
       <option value="boy">🎨 소년 (그래픽 · 2D)</option>
       <option value="girl">🎨 소녀 (그래픽 · 2D)</option>
     </select>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.9rem;color:#9a9ab0;cursor:pointer">
+      <input type="checkbox" id="headMove"> 머리 움직임
+    </label>
     <a class="link" href="combo.html" style="margin-left:auto">🎬 5인 동시</a>
     <a class="link" href="draw.html" style="margin-left:12px">✏️ 내 손그림 →</a>
   </div>
@@ -246,10 +251,22 @@ function makeEye(sign, box) {
 
 const gltfLoader = new GLTFLoader();
 gltfLoader.setMeshoptDecoder(MeshoptDecoder);
-// mark/claire 는 같은 ARKit 토폴로지(52 모프타깃)지만 헤드마다 크기·눈 위치가 달라 로드 때 재구성.
+// 3D 헤드 정의 — 전부 ARKit 52 모프타깃이라 구동 코드는 공용, 개별 차이만 여기 선언.
+//  석고(mark·claire): 우리 리포 자산, 머리만 있고 안구 메시가 없어 눈알 구체를 넣는다.
+//  RPM: Ready Player Me CDN 에서 런타임 로드(리포에 재배포하지 않음 — 원 제공자 CDN 이 정식 사용법).
+//       반신이라 상단 일부만 머리로 잡아 프레이밍하고, 눈·머리카락·옷이 이미 있어 구체 불필요
+//       (시선도 eyeLook 모프로 직접 돌아간다).
+const RPM_Q = "?morphTargets=ARKit&textureAtlas=1024";
+const HEADS = {
+  mark:   { url: "assets3d/mark.glb?v=3",   label: "석고상 남성", eyeSpheres: true,  headFrac: 1 },
+  claire: { url: "assets3d/claire.glb?v=3", label: "석고상 여성", eyeSpheres: true,  headFrac: 1 },
+  rpmA:   { url: "https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb" + RPM_Q, label: "RPM 아바타 A", eyeSpheres: false, headFrac: 0.22 },
+  rpmB:   { url: "https://models.readyplayer.me/622952275de1ae64c9ebe969.glb" + RPM_Q, label: "RPM 아바타 B", eyeSpheres: false, headFrac: 0.22 },
+};
 const glbCache = {};
-let sceneNode = null;
+let sceneNode = null, loaded3D = null;   // 현재 화면에 올라간 3D 헤드(로드 실패 시 되돌리기용)
 function load3D(name) {
+  const cfg = HEADS[name];
   const done = g => {
     if (sceneNode) group.remove(sceneNode);
     eyes3d.forEach(e => group.remove(e)); eyes3d = [];
@@ -257,19 +274,32 @@ function load3D(name) {
     group.updateMatrixWorld(true);                   // .position 변경을 matrixWorld 에 즉시 반영 —
                                                      // 안 하면 setFromObject 가 이전 헤드 오프셋을 물어 bbox 가 어긋남
     sceneNode = g.scene;
-    sceneNode.traverse(o => { if (o.isMesh) { mesh = o; o.frustumCulled = false; } });   // 모프 적용 시 컬링 방지
+    mesh = null;
+    // 모프타깃을 가진 메시를 고른다 (RPM 은 헤드 외 메시가 섞여 있을 수 있음)
+    sceneNode.traverse(o => { if (o.isMesh && o.morphTargetInfluences) { mesh = o; o.frustumCulled = false; } });
+    if (!mesh) { setStatus(cfg.label + ": 표정 모프타깃이 없는 모델입니다", true); return; }
     morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
     group.add(sceneNode);
     const box = new THREE.Box3().setFromObject(sceneNode);
-    const c = box.getCenter(new THREE.Vector3());
-    eyes3d = [makeEye(1, box), makeEye(-1, box)];    // 눈은 head 로컬 bbox 로 배치 후
-    group.position.set(-c.x, -c.y, -c.z);            // 헤드·눈 함께 recenter
-    camera.position.set(0, 1.5, 80); camera.lookAt(0, 0, 0);
+    const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+    if (cfg.eyeSpheres) eyes3d = [makeEye(1, box), makeEye(-1, box)];   // 눈은 head 로컬 bbox 로 배치 후
+    // 프레이밍: 석고는 전체가 머리 / RPM 은 반신이라 상단 headFrac 만큼을 머리로 보고 맞춘다
+    const headH = s.y * cfg.headFrac;
+    const focusY = cfg.headFrac === 1 ? c.y : box.max.y - headH * 0.42;
+    group.position.set(-c.x, -focusY, -c.z);         // 헤드·눈 함께 recenter
+    camera.position.set(0, 0, headH * 2.0); camera.lookAt(0, 0, 0);
+    camera.near = headH / 100; camera.far = headH * 100; camera.updateProjectionMatrix();
     setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요");
   };
   if (glbCache[name]) return done(glbCache[name]);
-  gltfLoader.load(`assets3d/${name}.glb?v=3`, g => { glbCache[name] = g; done(g); },
-    undefined, e => setStatus((name === "claire" ? "여성 석고상" : "석고상") + " 로드 실패: " + e, true));
+  setStatus(cfg.label + " 불러오는 중…");
+  const prev = loaded3D;
+  gltfLoader.load(cfg.url, g => { glbCache[name] = g; loaded3D = name; done(g); },
+    undefined, () => {
+      // 실패 시 화면엔 이전 헤드가 남으므로 드롭다운도 되돌려 UI 와 화면을 일치시킨다
+      setStatus(cfg.label + " 를 불러오지 못했습니다 — 네트워크를 확인해주세요", true);
+      if (prev) $("charSel").value = prev;
+    });
 }
 // 초기 로드는 캐릭터 선택부에서 현재 selection 으로 한 번만 (mark/claire 이중로드 경쟁 방지)
 
@@ -325,7 +355,7 @@ async function loadChar(name) {
 // ================= 캐릭터 선택 =================
 // select 값이 단일 진실 — mark·claire=3D 헤드 / boy·girl=2D 그래픽
 const mode = () => $("charSel").value;
-const is3D = () => mode() === "mark" || mode() === "claire";
+const is3D = () => mode() in HEADS;   // HEADS 에 선언된 것이 3D 헤드 (석고 2종 + RPM 2종)
 $("charSel").onchange = () => {
   stopRec();   // 녹화 스트림은 모드별 캔버스에 물려 있어 전환 시 종료
   $("stage3d").style.display = is3D() ? "" : "none";
@@ -339,6 +369,10 @@ if (deep && [...$("charSel").options].some(o => o.value === deep)) $("charSel").
 $("charSel").onchange();   // 현재 selection 을 한 번 로드 (기본 mark 또는 딥링크)
 
 // ================= 렌더 루프 (활성 캐릭터만 그림) =================
+// 머리 회전 부호 — 실사용에서 뒤집혀 보이면 여기만 바꾼다 (?hs=y,p,r 로 즉석 실험 가능)
+const hsQ = new URLSearchParams(location.search).get("hs");
+const hsv = hsQ ? hsQ.split(",").map(Number) : [1, 1, 1];
+const SIGN = { y: hsv[0] || 1, p: hsv[1] || 1, r: hsv[2] || 1 };
 let lastFrame = 0;
 function render(now) {
   requestAnimationFrame(render);
@@ -359,7 +393,10 @@ function render(now) {
     const [gsx, gsy] = gaze3d(0, W);
     for (const e of eyes3d) e.rotation.set(gsy * 0.3, gsx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
-    group.rotation.set(userPitch + nod * 0.04, userYaw, 0);
+    // 머리 회전: 토글 ON 이면 웹캠 머리 자세를 전이, OFF 면 표정만 (기존 동작 유지)
+    const h = $("headMove").checked ? mirror.head() : null;
+    if (h) group.rotation.set(userPitch + SIGN.p * h[1] + nod * 0.04, userYaw + SIGN.y * h[0], SIGN.r * h[2]);
+    else group.rotation.set(userPitch + nod * 0.04, userYaw, 0);
     renderer.render(scene, camera);
     return;
   }

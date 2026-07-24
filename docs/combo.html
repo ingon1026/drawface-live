@@ -41,6 +41,9 @@
   <div class="row">
     <button id="mirrorBtn">🪞 미러링 시작</button>
     <button class="alt" id="recBtn" style="background:#2a2a35">⏺ 5칸 녹화</button>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.9rem;color:#9a9ab0;cursor:pointer">
+      <input type="checkbox" id="headMove"> 머리 움직임
+    </label>
     <a class="link" href="./">← 스튜디오</a>
   </div>
   <div id="status">로딩 중…</div>
@@ -116,14 +119,16 @@ function make3D(canvas, glbName) {
   const gaze = AvatarCore.makeGaze({ gx: 0, gy: 0 }, { mulX: 0.8, mulY: 0.5 });
   function resize() { const r = canvas.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = 1; camera.updateProjectionMatrix(); }
   new ResizeObserver(resize).observe(canvas);
-  return { render(blink) {
+  return { render(blink, h) {
     if (!mesh) return;
     const inf = mesh.morphTargetInfluences;
     for (const [k, idx] of morphMap) inf[idx] = (k === "eyeblinkleft" || k === "eyeblinkright") ? blink : (smooth[k] || 0);
     const [gx, gy] = gaze(0, W);
     for (const e of eyes) e.rotation.set(gy * 0.3, gx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
-    group.rotation.set(nod * 0.04, 0, 0);
+    // 머리 회전: h 가 오면 웹캠 머리 자세를 얹고, 없으면 끄덕임만 (기존 동작)
+    if (h) group.rotation.set(SIGN.p * h[1] + nod * 0.04, SIGN.y * h[0], SIGN.r * h[2]);
+    else group.rotation.set(nod * 0.04, 0, 0);
     renderer.render(scene, camera);
   } };
 }
@@ -186,6 +191,10 @@ $("mirrorBtn").onclick = () => {
 };
 
 // ---------- 렌더 루프 ----------
+// 머리 회전 부호 — 실사용에서 뒤집혀 보이면 여기만 바꾼다 (?hs=y,p,r 로 즉석 실험 가능)
+const hsQ = new URLSearchParams(location.search).get("hs");
+const hsv = hsQ ? hsQ.split(",").map(Number) : [1, 1, 1];
+const SIGN = { y: hsv[0] || 1, p: hsv[1] || 1, r: hsv[2] || 1 };
 let lastFrame = 0;
 function frame(now) {
   requestAnimationFrame(frame);
@@ -196,7 +205,8 @@ function frame(now) {
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
   drawMe();   // 내 얼굴 + 랜드마크
-  heads.mark.render(blink); heads.claire.render(blink);
+  const head = $("headMove").checked ? mirror.head() : null;   // 석고 두 개만 머리 회전 (2D 는 headWander 유지)
+  heads.mark.render(blink, head); heads.claire.render(blink, head);
   chars.boy.render(blink); chars.girl.render(blink);
   if (recCtx) compositeRec();
 }

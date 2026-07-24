@@ -6,19 +6,18 @@
 [![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
-<p>
-  <img src="docs/img/studio_mark.gif" width="49%" alt="석고상(NVIDIA mark) 미러링 쇼케이스">
-  <img src="docs/img/studio_boy.gif" width="49%" alt="소년 그래픽 미러링 쇼케이스">
-</p>
+![4캐릭터 동기 쇼케이스 — 석고상·소년·돼지·졸라맨](docs/img/studio_sync.gif)
 
-<sub>메인 스튜디오의 자동 쇼케이스(미소→아→우→놀람→윙크→시선 좌/우) — 카메라 허용 전에도 이렇게 시연되고,
-🪞 미러링을 시작하면 같은 채널이 내 표정으로 구동됩니다. 두 GIF 는 스튜디오의 ⏺ 녹화 버튼으로 뽑은 것.</sub>
+<sub>**네 캐릭터가 같은 표정 채널로 동시에 구동됩니다** (미소→아→우→놀람→윙크→시선 좌/우) —
+석고상은 3D 모프타깃, 소년·졸라맨은 벡터 입, 돼지는 비즈메 스프라이트로 각자 렌더하지만 입력 채널은 하나.
+카메라 허용 전에도 이렇게 자동 시연되고, 🪞 미러링을 시작하면 같은 채널이 내 표정으로 구동됩니다.
+GIF 는 스튜디오의 ⏺ 녹화 버튼으로 캐릭터별 녹화 후 합성.</sub>
 
 ## ▶ 바로 체험 — https://ingon1026.github.io/drawface-live/
 
 | 입구 | 캐릭터 | 엔진 |
 | --- | --- | --- |
-| **메인** (미러링 스튜디오) | 🗿 석고상 (NVIDIA mark · 3D) · 🎨 소년 (2D) | MediaPipe 표정 채널 → 3D 모프타깃 / 2D 벡터 입·워프 |
+| **메인** (미러링 스튜디오) | 🗿 석고상 (3D) · 🎨 소년 · 🐷 돼지 · ✏️ 졸라맨 (2D) | MediaPipe 표정 채널 → 3D 모프타깃 / 2D 벡터 입·워프 |
 | [draw.html](https://ingon1026.github.io/drawface-live/draw.html) | ✏️ **내 손그림** (드래그앤드롭 + 4클릭) | 결정론 워프 — 화풍 100% 보존 |
 | 로컬 GPU ([아래](#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측)) | 🖼 초상화·표준 비율 일러스트 | LivePortrait TensorRT ≈30fps |
 

@@ -66,6 +66,8 @@
     <select id="charSel">
       <option value="mark">🗿 석고상 (NVIDIA mark · 3D)</option>
       <option value="boy">🎨 소년 (그래픽 · 2D)</option>
+      <option value="pig">🐷 돼지 (손그림 · 2D)</option>
+      <option value="stick">✏️ 졸라맨 (낙서 · 2D)</option>
     </select>
     <a class="link" href="draw.html">✏️ 내 손그림으로 →</a>
   </div>
@@ -269,42 +271,58 @@ addEventListener("pointermove", e => {
 });
 const gaze3d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker(canvas3d), { mulX: 0.8, mulY: 0.5 });
 
-// ================= 2D: 소년 =================
-// 파츠 출처: talking-drawing-avatar docs/characters/default 스냅샷 (manifest 의 persona 만 제거)
+// ================= 2D: 소년(벡터 입+워프) · 돼지/졸라맨(비즈메 스프라이트) =================
+// 소년 파츠 출처: talking-drawing-avatar docs/characters/default 스냅샷 (manifest 의 persona 만 제거)
+// 돼지·졸라맨: assets/sprites 스냅샷 — 입은 코어 makeMouthPicker+비즈메 PNG, 눈 3단계(윙크 가능)
 const cv = $("cv"), ctx2d = cv.getContext("2d");
 const glCanvas = $("gl"), shakeEl = $("shake");
-const PART_FILES = ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open",
-  "eye_L_closed", "eye_R_closed", "pupil_L", "pupil_R"];
+const CHAR_FILES = {
+  boy: ["base", "brow_L", "brow_R", "eye_L_open", "eye_R_open",
+    "eye_L_closed", "eye_R_closed", "pupil_L", "pupil_R"],
+  pig: ["base", "eye_L_open", "eye_R_open", "eye_L_half", "eye_R_half", "eye_L_closed", "eye_R_closed",
+    "mouth_A", "mouth_E", "mouth_I", "mouth_O", "mouth_U", "mouth_M", "mouth_closed", "mouth_smile"],
+  stick: ["base", "eye_L_open", "eye_R_open", "eye_L_half", "eye_R_half", "eye_L_closed", "eye_R_closed",
+    "mouth_A", "mouth_E", "mouth_I", "mouth_O", "mouth_U", "mouth_closed", "mouth_smile"],
+};
 let parts = {}, manifest = null;
+const charCache = {};
 const gaze2d = AvatarCore.makeGaze(AvatarCore.makeCursorTracker($("stage2d")), { mulX: 0.9, mulY: 0.6 });
 const headWander = AvatarCore.makeHeadWander();
+const mouthPicker = AvatarCore.makeMouthPicker(W);
 const warp = AvatarCore.makeWarp({
   threeUrl: "./vendor/three.module.js", glCanvas,
   getParts: () => parts, getManifest: () => manifest, W,
 });
 
-async function loadBoy() {
-  manifest = await fetch("characters/boy/manifest.json").then(r => r.json());
-  await Promise.all(PART_FILES.map(name => new Promise(res => {
-    const img = new Image();
-    img.onload = () => { parts[name] = img; res(); };
-    img.onerror = () => res();
-    img.src = `characters/boy/${name}.png`;
-  })));
-  warp.setCharacter();
+async function loadChar(name) {
+  if (!charCache[name]) {
+    const m = await fetch(`characters/${name}/manifest.json`).then(r => r.json());
+    const ps = {};
+    await Promise.all(CHAR_FILES[name].map(f => new Promise(res => {
+      const img = new Image();
+      img.onload = () => { ps[f] = img; res(); };
+      img.onerror = () => res();
+      img.src = `characters/${name}/${f}.png`;
+    })));
+    charCache[name] = { parts: ps, manifest: m };
+  }
+  ({ parts, manifest } = charCache[name]);
+  if (manifest.proceduralMouth) warp.setCharacter();   // 워프는 벡터 입 캐릭터(소년)만
 }
 
 // ================= 캐릭터 선택 =================
-// 렌더러 선택 — select 값이 단일 진실(mark=3D 씬 / boy=2D 스프라이트. 캐릭터 목록이 아니라 렌더러 2종)
+// select 값이 단일 진실 — mark=3D 씬, 나머지=2D (parts+manifest 교체)
 const mode = () => $("charSel").value;
 $("charSel").onchange = () => {
   stopRec();   // 녹화 스트림은 캐릭터별 캔버스에 물려 있어 전환 시 종료
   $("stage3d").style.display = mode() === "mark" ? "" : "none";
-  $("stage2d").style.display = mode() === "boy" ? "" : "none";
+  $("stage2d").style.display = mode() === "mark" ? "none" : "";
+  if (mode() !== "mark") loadChar(mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));
 };
-// 딥링크: ?char=boy 로 진입하면 소년부터 (draw.html·boy.html 이 사용)
-if (new URLSearchParams(location.search).get("char") === "boy") {
-  $("charSel").value = "boy";
+// 딥링크: ?char=boy|pig|stick 으로 진입 (draw.html·boy.html 이 사용)
+const deep = new URLSearchParams(location.search).get("char");
+if (deep && [...$("charSel").options].some(o => o.value === deep)) {
+  $("charSel").value = deep;
   $("charSel").onchange();
 }
 
@@ -331,28 +349,51 @@ function render(now) {
     return;
   }
 
-  // 2D 소년
+  // 2D 캐릭터
   if (!parts.base || !manifest) return;
   headWander(shakeEl, now, W("jawopen"), 0.5, null);
-  const warpOn = warp.ready;
+  // 입과 눈을 파츠 구성에 따라 독립 분기 — 소년: 벡터 입+동공 / 졸라맨: 벡터 입+눈 3단계 /
+  // 돼지: 비즈메 스프라이트 입+눈 3단계. 워프는 벡터 입 캐릭터만.
+  const vectorMouth = !!manifest.proceduralMouth;
+  const warpOn = vectorMouth && warp.ready;
   if (warpOn) { glCanvas.style.visibility = "visible"; warp.render(); }
   else { glCanvas.style.visibility = "hidden"; }
   ctx2d.clearRect(0, 0, 512, 512);
   const draw = (n, dyy = 0) => parts[n] && ctx2d.drawImage(parts[n], 0, dyy);
   const drawXY = (n, dx, dyy) => parts[n] && ctx2d.drawImage(parts[n], dx, dyy);
   if (!warpOn) { ctx2d.fillStyle = "#fff"; ctx2d.fillRect(0, 0, 512, 512); draw("base"); }
+  const [gzx, gzy] = gaze2d(0, W);
+
   const browUp = -(manifest.browRange || 0) * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2)
                + (manifest.browRange || 0) * 0.8 * (W("browdownleft") + W("browdownright")) / 2;
   draw("brow_L", browUp); draw("brow_R", browUp);
-  if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
-  else {
-    draw("eye_L_open"); draw("eye_R_open");
-    const [gzx, gzy] = gaze2d(0, W);
-    const pr = manifest.pupilRange || 0;
-    drawXY("pupil_L", gzx * pr, gzy * pr); drawXY("pupil_R", gzx * pr, gzy * pr);
+
+  if (parts.pupil_L) {   // 동공 파츠 有 (소년): 눈 2단계 + 동공 시선
+    if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
+    else {
+      draw("eye_L_open"); draw("eye_R_open");
+      const pr = manifest.pupilRange || 0;
+      drawXY("pupil_L", gzx * pr, gzy * pr); drawXY("pupil_R", gzx * pr, gzy * pr);
+    }
+  } else {               // 동공 無 (돼지·졸라맨): 눈 3단계, 좌우 독립(윙크), 시선은 눈 스프라이트 미세 이동
+    const eye = (side, v) => {
+      const st = v > 0.65 ? "closed" : v > 0.3 ? "half" : "open";
+      drawXY(`eye_${side}_${st}`, st === "open" ? gzx * 4 : 0, st === "open" ? gzy * 3 : 0);
+    };
+    eye("L", Math.max(blinker.value(now), W("eyeblinkleft")));
+    eye("R", Math.max(blinker.value(now), W("eyeblinkright")));
   }
-  const jawDy = warp.jawOverlayDy(W("jawopen"), warpOn, manifest);
-  AvatarCore.drawVectorMouth(ctx2d, W, manifest, jawDy);
+
+  if (vectorMouth) {
+    const jawDy = warp.jawOverlayDy(W("jawopen"), warpOn, manifest);
+    AvatarCore.drawVectorMouth(ctx2d, W, manifest, jawDy);
+  } else {
+    const jawDy = (manifest.jawDrop || 0) * W("jawopen");
+    const smiling = (W("mouthsmileleft") + W("mouthsmileright")) / 2 > 0.3;
+    const pick = mouthPicker.pick(now);
+    const name = pick.cur === "closed" && smiling ? "mouth_smile" : "mouth_" + pick.cur;
+    (parts[name] || parts.mouth_closed) && ctx2d.drawImage(parts[name] || parts.mouth_closed, 0, jawDy);
+  }
 
   if (recCv) {   // 2D 녹화 — 두 레이어(gl 워프 + cv 오버레이) 합성
     const c = recCv.getContext("2d");
@@ -363,7 +404,7 @@ function render(now) {
 }
 
 warp.init();
-loadBoy().catch(e => setStatus("소년 로드 실패: " + e.message, true));
+loadChar(mode() === "mark" ? "boy" : mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));   // 2D 프리로드
 requestAnimationFrame(render);
 </script>
 </body>

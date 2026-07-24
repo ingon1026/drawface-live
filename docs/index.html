@@ -18,15 +18,15 @@
   h1 { font-size: 1.25rem; font-weight: 700; margin: 12px 0; }
   .duo { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
   .stage { flex: 1 1 380px; max-width: 560px; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid #2a2a35; position: relative; }
-  /* 분석 패널: 캐릭터 옆에서 내 얼굴 + MediaPipe 랜드마크 + 표정 채널값을 비교군으로 보여준다 */
+  /* 분석 패널: 캐릭터 옆에서 내 얼굴 + MediaPipe 랜드마크 + 표정 채널값을 비교군으로 보여준다
+     (내용물은 코어 AvatarCore.makeMirrorPanel 이 인라인 스타일로 생성 — 여긴 배치만) */
   #panel { flex: 0 0 280px; display: none; }
   #panel.on { display: block; }
-  #panel h2 { font-size: .85rem; font-weight: 600; color: #9a9ab0; margin: 2px 0 8px; }
-  #camCv { width: 100%; border-radius: 12px; border: 1px solid #2a2a35; background: #0d0d12; display: block; }
-  .ch { margin-top: 7px; font-size: .76rem; color: #9a9ab0; }
-  .ch .val { float: right; color: #e8e8ef; font-variant-numeric: tabular-nums; }
-  .ch .track { height: 8px; background: #23232e; border-radius: 4px; position: relative; margin-top: 3px; }
-  .ch .fill { position: absolute; top: 0; bottom: 0; background: #5b8cff; border-radius: 4px; }
+  #recBtn.on { background: #e2647e; }
+  @media (max-width: 620px) {
+    main { padding: 12px 0 32px; }
+    #panel { flex: 1 1 100%; max-width: 560px; }
+  }
   #stage3d { background: #0d0d12; cursor: grab; }
   #stage2d { background: #fff; }
   .warp-shake { position: absolute; inset: 0; will-change: transform; }
@@ -56,16 +56,13 @@
       <canvas id="gl" width="512" height="512"></canvas>
       <canvas id="cv" width="512" height="512"></canvas>
     </div></div>
-    <div id="panel">
-      <h2>📊 비교군 — 내 얼굴 → MediaPipe 채널</h2>
-      <canvas id="camCv" width="320" height="240"></canvas>
-      <div id="chBars"></div>
-    </div>
+    <div id="panel"></div>
   </div>
 
   <div class="row">
     <button id="mirrorBtn">🪞 미러링 시작</button>
     <button class="alt" id="panelBtn">📊 분석</button>
+    <button class="alt" id="recBtn" title="캐릭터 캔버스만 WebM 영상으로 저장">⏺ 녹화</button>
     <select id="charSel">
       <option value="mark">🗿 석고상 (NVIDIA mark · 3D)</option>
       <option value="boy">🎨 소년 (그래픽 · 2D)</option>
@@ -86,15 +83,21 @@
 
 <script src="avatar_core.js"></script>
 <script type="module">
-let THREE, GLTFLoader;
+let THREE, GLTFLoader, MeshoptDecoder;
 try {
   THREE = await import("three");
-  // GLTFLoader 는 CDN(jsDelivr, three r160 동일 버전) 우선 — Pages 신규 경로의 엣지 404 캐시를
-  // 회피한다(MediaPipe 도 같은 CDN 으로 로드 중이라 도달성 검증됨). 실패 시 로컬 벤더 폴백.
+  // GLTFLoader·meshopt 디코더는 CDN(jsDelivr, three r160 동일 버전) 우선 — Pages 신규 경로의
+  // 엣지 404 캐시를 회피한다(MediaPipe 도 같은 CDN 으로 로드 중이라 도달성 검증됨). 실패 시 로컬 폴백.
   try {
     ({ GLTFLoader } = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js"));
   } catch {
     ({ GLTFLoader } = await import("./vendor/GLTFLoader.js?v=2"));
+  }
+  // mark.glb 는 EXT_meshopt_compression (41MB → 1.8MB) — 디코더 필수
+  try {
+    ({ MeshoptDecoder } = await import("https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/meshopt_decoder.module.js"));
+  } catch {
+    ({ MeshoptDecoder } = await import("./vendor/meshopt_decoder.module.js"));
   }
 } catch (e) {
   // 진짜 원인 추적용: 실패한 리소스의 실제 HTTP 상태를 상태줄에 노출
@@ -166,57 +169,44 @@ function demoApply() {
 }
 scheduleDemo(2200);   // 첫 진입 — 모델 로드될 즈음 시연 시작
 
-// ================= 분석 패널: 내 얼굴에 알고리즘이 적용된 모습 (비교군) =================
-// 웹캠(거울 반전) + 478점 랜드마크(홍채 10점 강조) + 캐릭터를 실제로 구동하는 채널값 막대
-const panel = $("panel"), camCv = $("camCv"), camCtx = camCv.getContext("2d");
+// ================= 분석 패널 (코어 makeMirrorPanel — face 페이지들과 공용) =================
+const panel = $("panel");
+const mpanel = AvatarCore.makeMirrorPanel(mirror, panel);
 $("panelBtn").onclick = () => panel.classList.toggle("on");
-const CHS = [
-  ["입 벌림 jawOpen", () => W("jawopen")],
-  ["미소 mouthSmile", () => (W("mouthsmileleft") + W("mouthsmileright")) / 2],
-  ["오므림 mouthPucker", () => W("mouthpucker")],
-  ["눈 감음 eyeBlink", () => (W("eyeblinkleft") + W("eyeblinkright")) / 2],
-  ["눈썹 browInnerUp", () => W("browinnerup")],
-  // 시선 2개는 makeGaze 와 동일 결합식 — 홍채 트래킹 결과가 그대로 보인다 (양방향 막대)
-  ["시선 가로 eyeLookX", () => (W("eyelookoutright") + W("eyelookinleft") - W("eyelookoutleft") - W("eyelookinright")) / 2, true],
-  ["시선 세로 eyeLookY", () => (W("eyelookdownleft") + W("eyelookdownright") - W("eyelookupleft") - W("eyelookupright")) / 2, true],
-];
-const bars = CHS.map(([label, , bipolar]) => {
-  const row = document.createElement("div");
-  row.className = "ch";
-  row.innerHTML = `<span>${label}</span><span class="val"></span><div class="track"><div class="fill"></div></div>`;
-  $("chBars").appendChild(row);
-  return { fill: row.querySelector(".fill"), val: row.querySelector(".val"), bipolar };
-});
-function drawPanel() {
-  if (!panel.classList.contains("on")) return;
-  const d = mirror.debug();
-  const w = camCv.width, h = camCv.height;
-  camCtx.fillStyle = "#0d0d12"; camCtx.fillRect(0, 0, w, h);
-  if (!mirror.on || !d.video || d.video.readyState < 2) {
-    camCtx.fillStyle = "#9a9ab0"; camCtx.font = "13px sans-serif"; camCtx.textAlign = "center";
-    camCtx.fillText("미러링을 시작하면 표시됩니다", w / 2, h / 2);
-  } else {
-    camCtx.save(); camCtx.scale(-1, 1); camCtx.drawImage(d.video, -w, 0, w, h); camCtx.restore();
-    if (d.lm) {
-      camCtx.fillStyle = "rgba(91,140,255,.85)";
-      for (let i = 0; i < 468; i++) camCtx.fillRect((1 - d.lm[i].x) * w - .5, d.lm[i].y * h - .5, 1.5, 1.5);
-      camCtx.fillStyle = "#ffb03a";   // 홍채 10점 = 시선 계산 입력
-      for (let i = 468; i < d.lm.length; i++) camCtx.fillRect((1 - d.lm[i].x) * w - 1.5, d.lm[i].y * h - 1.5, 3, 3);
-    }
-  }
-  CHS.forEach(([, get], i) => {
-    const v = get(), b = bars[i];
-    b.val.textContent = v.toFixed(2);
-    if (b.bipolar) {
-      const p = Math.max(-1, Math.min(1, v)) * 50;
-      b.fill.style.left = p < 0 ? 50 + p + "%" : "50%";
-      b.fill.style.width = Math.abs(p) + "%";
-      b.fill.style.background = "#ffb03a";
-    } else {
-      b.fill.style.left = "0"; b.fill.style.width = Math.min(1, v) * 100 + "%";
-    }
-  });
+
+// ================= 녹화: 캐릭터 캔버스만 WebM 저장 (draw.html 과 같은 방식) =================
+// 3D 는 cv3d 직접, 2D 는 gl+cv 두 레이어라 오프스크린 합성 캔버스를 매 프레임 채워 녹화.
+let recorder = null, recCv = null;
+function stopRec() {
+  if (recorder && recorder.state !== "inactive") recorder.stop();
 }
+$("recBtn").onclick = () => {
+  if (recorder) { stopRec(); return; }
+  const mime = ["video/webm;codecs=vp9", "video/webm"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!mime) { setStatus("이 브라우저는 WebM 녹화를 지원하지 않습니다", true); return; }
+  let stream;
+  if (mode() === "mark") stream = canvas3d.captureStream(30);
+  else {
+    recCv = document.createElement("canvas"); recCv.width = 512; recCv.height = 512;
+    stream = recCv.captureStream(30);
+  }
+  const chunks = [];
+  recorder = new MediaRecorder(stream, { mimeType: mime });
+  recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+  recorder.onstop = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(chunks, { type: "video/webm" }));
+    a.download = "drawface-live.webm";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    recorder = null; recCv = null;
+    $("recBtn").classList.remove("on"); $("recBtn").textContent = "⏺ 녹화";
+    setStatus("녹화 완료 — WebM 다운로드를 시작했습니다");
+  };
+  recorder.start();
+  $("recBtn").classList.add("on"); $("recBtn").textContent = "⏹ 녹화 종료";
+  setStatus("녹화 중 — 캐릭터 캔버스만 저장됩니다 (웹캠 화면은 포함 안 됨)");
+};
 
 // ================= 3D: 석고상 (mark) =================
 const canvas3d = $("cv3d");
@@ -246,7 +236,9 @@ function makeEye(cx) {
   return eg;
 }
 
-new GLTFLoader().load("assets3d/mark.glb?v=2", g => {
+const gltfLoader = new GLTFLoader();
+gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+gltfLoader.load("assets3d/mark.glb?v=3", g => {
   g.scene.traverse(o => { if (o.isMesh) mesh = o; });
   morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
   group.add(g.scene);
@@ -306,6 +298,7 @@ async function loadBoy() {
 // 렌더러 선택 — select 값이 단일 진실(mark=3D 씬 / boy=2D 스프라이트. 캐릭터 목록이 아니라 렌더러 2종)
 const mode = () => $("charSel").value;
 $("charSel").onchange = () => {
+  stopRec();   // 녹화 스트림은 캐릭터별 캔버스에 물려 있어 전환 시 종료
   $("stage3d").style.display = mode() === "mark" ? "" : "none";
   $("stage2d").style.display = mode() === "boy" ? "" : "none";
 };
@@ -322,7 +315,7 @@ function render(now) {
   demoApply();   // 자동 쇼케이스 (미러링 off 일 때만)
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
-  drawPanel();   // 비교군 — 캐릭터와 같은 프레임의 채널값
+  mpanel.draw(W);   // 비교군 — 캐릭터와 같은 프레임의 채널값
 
   if (mode() === "mark") {
     if (!mesh) return;
@@ -360,6 +353,13 @@ function render(now) {
   }
   const jawDy = warp.jawOverlayDy(W("jawopen"), warpOn, manifest);
   AvatarCore.drawVectorMouth(ctx2d, W, manifest, jawDy);
+
+  if (recCv) {   // 2D 녹화 — 두 레이어(gl 워프 + cv 오버레이) 합성
+    const c = recCv.getContext("2d");
+    c.fillStyle = "#fff"; c.fillRect(0, 0, 512, 512);
+    if (warpOn) c.drawImage(glCanvas, 0, 0);
+    c.drawImage(cv, 0, 0);
+  }
 }
 
 warp.init();

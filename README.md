@@ -17,7 +17,7 @@
 
 | 입구 | 캐릭터 | 엔진 |
 | --- | --- | --- |
-| **메인** (미러링 스튜디오) | 🗿 석고상 (3D) · 🎨 소년 · 🐷 돼지 · ✏️ 졸라맨 (2D) | MediaPipe 표정 채널 → 3D 모프타깃 / 2D 벡터 입·워프 |
+| **메인** (미러링 스튜디오) | 🗿 석고상 남/여 (NVIDIA mark·claire · 3D) · 🎨 소년/소녀 (그래픽 · 2D) | MediaPipe 표정 채널 → 3D 모프타깃 / 2D 벡터 입·워프 |
 | [draw.html](https://ingon1026.github.io/drawface-live/draw.html) | ✏️ **내 손그림** (드래그앤드롭 + 4클릭) | 결정론 워프 — 화풍 100% 보존 |
 | 로컬 GPU ([아래](#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측)) | 🖼 초상화·표준 비율 일러스트 | LivePortrait TensorRT ≈30fps |
 

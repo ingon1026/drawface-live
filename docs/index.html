@@ -136,6 +136,7 @@ const setStatus = AvatarCore.bindStatus($("status"));
 const Q = new URLSearchParams(location.search);
 const CLEAN = Q.get("clean") === "1";
 if (CLEAN) document.body.classList.add("clean");
+if (Q.get("head") === "1") $("headMove").checked = true;   // 쿼리는 체크박스 상태로 반영(단일 진실)
 
 
 // ================= 공유: 미러링 + 깜빡임 =================
@@ -274,14 +275,15 @@ gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 //       반신이라 상단 일부만 머리로 잡아 프레이밍하고, 눈·머리카락·옷이 이미 있어 구체 불필요
 //       (시선도 eyeLook 모프로 직접 돌아간다).
 // RPM 아바타는 jsDelivr(GitHub) 에 공개된 것을 런타임 로드한다 — 우리 리포에 재배포하지 않고,
+// 커밋 SHA 로 고정한다(@main 은 남의 브랜치라 force-push·삭제로 조용히 깨질 수 있음).
 // 이미 three.js·디코더를 받아오는 CDN 이라 도달성·CORS 가 검증돼 있다(models.readyplayer.me 는 실패).
 const GH = "https://cdn.jsdelivr.net/gh/";
 const HEADS = {
   mark:   { url: "assets3d/mark.glb?v=3",   label: "석고상 남성", eyeSpheres: true,  headFrac: 1 },
   claire: { url: "assets3d/claire.glb?v=3", label: "석고상 여성", eyeSpheres: true,  headFrac: 1 },
-  rpmA:   { url: GH + "AgoraIO-Community/agora-mediapipe-readyplayerme@main/public/6644d711e53a2fb55928d72e.glb",
+  rpmA:   { url: GH + "AgoraIO-Community/agora-mediapipe-readyplayerme@c1aeedbd0501c1e1ad013947bf258639baf6085f/public/6644d711e53a2fb55928d72e.glb",
             label: "아바타 A", eyeSpheres: false, headFrac: 0.22 },
-  rpmB:   { url: GH + "met4citizen/TalkingHead@main/avatars/brunette.glb",
+  rpmB:   { url: GH + "met4citizen/TalkingHead@eed58d198076a7e1e825f804802921c4d3804d46/avatars/brunette.glb",
             label: "아바타 B", eyeSpheres: false, headFrac: 0.22 },
 };
 const glbCache = {};
@@ -315,16 +317,16 @@ function load3D(name) {
     group.position.set(-c.x, -focusY, -c.z);         // 헤드·눈 함께 recenter
     camera.position.set(0, 0, headH * 2.0); camera.lookAt(0, 0, 0);
     camera.near = headH / 100; camera.far = headH * 100; camera.updateProjectionMatrix();
+    loaded3D = name;   // 캐시 히트 포함, 화면에 실제로 올라간 시점에 확정
     setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요");
   };
   if (glbCache[name]) return done(glbCache[name]);
   setStatus(cfg.label + " 불러오는 중…");
-  const prev = loaded3D;
-  gltfLoader.load(cfg.url, g => { glbCache[name] = g; loaded3D = name; done(g); },
+  gltfLoader.load(cfg.url, g => { glbCache[name] = g; done(g); },
     undefined, () => {
-      // 실패 시 화면엔 이전 헤드가 남으므로 드롭다운도 되돌려 UI 와 화면을 일치시킨다
+      // 실패 시 화면엔 직전 헤드가 남으므로 드롭다운도 되돌려 UI 와 화면을 일치시킨다
       setStatus(cfg.label + " 를 불러오지 못했습니다 — 네트워크를 확인해주세요", true);
-      if (prev) $("charSel").value = prev;
+      $("charSel").value = loaded3D || "mark";
     });
 }
 // 초기 로드는 캐릭터 선택부에서 현재 selection 으로 한 번만 (mark/claire 이중로드 경쟁 방지)
@@ -401,10 +403,6 @@ if (Q.get("auto") === "1") {
 }
 
 // ================= 렌더 루프 (활성 캐릭터만 그림) =================
-// 머리 회전 부호 — 실사용에서 뒤집혀 보이면 여기만 바꾼다 (?hs=y,p,r 로 즉석 실험 가능)
-const hsQ = new URLSearchParams(location.search).get("hs");
-const hsv = hsQ ? hsQ.split(",").map(Number) : [1, 1, 1];
-const SIGN = { y: hsv[0] || 1, p: hsv[1] || 1, r: hsv[2] || 1 };
 let lastFrame = 0;
 function render(now) {
   requestAnimationFrame(render);
@@ -427,8 +425,8 @@ function render(now) {
     for (const e of eyes3d) e.rotation.set(gsy * 0.3, gsx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
     // 머리 회전: 토글 ON 이면 웹캠 머리 자세를 전이, OFF 면 표정만 (기존 동작 유지)
-    const h = ($("headMove").checked || Q.get("head") === "1") ? mirror.head() : null;
-    if (h) group.rotation.set(userPitch + SIGN.p * h[1] + nod * 0.04, userYaw + SIGN.y * h[0], SIGN.r * h[2]);
+    const h = $("headMove").checked ? mirror.head() : null;
+    if (h) group.rotation.set(userPitch + h[1] + nod * 0.04, userYaw + h[0], h[2]);
     else group.rotation.set(userPitch + nod * 0.04, userYaw, 0);
     renderer.render(scene, camera);
     return;

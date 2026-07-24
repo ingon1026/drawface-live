@@ -106,7 +106,9 @@ function make3D(canvas, glbName) {
     eg.add(sc, ir, pu); group.add(eg); return eg;
   }
   loader.load(`assets3d/${glbName}.glb?v=3`, g => {
-    g.scene.traverse(o => { if (o.isMesh) { mesh = o; o.frustumCulled = false; } });
+    // 모프 없는 메시를 집으면 표정이 죽으므로 모프 보유 메시만 (다중이면 마지막 = 헤드)
+    g.scene.traverse(o => { if (o.isMesh && o.morphTargetInfluences) { mesh = o; o.frustumCulled = false; } });
+    if (!mesh) { setStatus(glbName + ": 모프타깃 메시 없음", true); return; }
     morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
     group.add(g.scene);
     const box = new THREE.Box3().setFromObject(g.scene);
@@ -127,7 +129,7 @@ function make3D(canvas, glbName) {
     for (const e of eyes) e.rotation.set(gy * 0.3, gx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
     // 머리 회전: h 가 오면 웹캠 머리 자세를 얹고, 없으면 끄덕임만 (기존 동작)
-    if (h) group.rotation.set(SIGN.p * h[1] + nod * 0.04, SIGN.y * h[0], SIGN.r * h[2]);
+    if (h) group.rotation.set(h[1] + nod * 0.04, h[0], h[2]);
     else group.rotation.set(nod * 0.04, 0, 0);
     renderer.render(scene, camera);
   } };
@@ -191,10 +193,6 @@ $("mirrorBtn").onclick = () => {
 };
 
 // ---------- 렌더 루프 ----------
-// 머리 회전 부호 — 실사용에서 뒤집혀 보이면 여기만 바꾼다 (?hs=y,p,r 로 즉석 실험 가능)
-const hsQ = new URLSearchParams(location.search).get("hs");
-const hsv = hsQ ? hsQ.split(",").map(Number) : [1, 1, 1];
-const SIGN = { y: hsv[0] || 1, p: hsv[1] || 1, r: hsv[2] || 1 };
 let lastFrame = 0;
 function frame(now) {
   requestAnimationFrame(frame);

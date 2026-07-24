@@ -119,11 +119,52 @@ const mirror = AvatarCore.makeMirror({ onStatus: setStatus });
 $("mirrorBtn").onclick = () => {
   if (mirror.on) {
     mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "🪞 미러링 시작";
+    scheduleDemo(3000);   // 미러링 끝나면 유휴 시연 재개
     return;
   }
+  showcase.stop(); clearTimeout(demoTimer);   // 직접 조종 시작 — 시연 즉시 중단
   mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; panel.classList.add("on"); })
     .catch(e => { mirror.stop(); $("mirrorBtn").classList.remove("on"); setStatus("미러링 실패: " + e.message, true); });
 };
+
+// ================= 자동 쇼케이스: 카메라 허용 전에도 살아있는 데모 =================
+// 포즈(채널값) 시퀀스를 EMA 로 부드럽게 수렴시켜 시연 — 시퀀서는 코어 makeShowcase 재사용.
+// 3D/2D 렌더러가 같은 채널을 소비하므로 석고상·소년 모두 자동 적용. 미러링 중엔 완전히 꺼짐.
+const POSES = [
+  { mouthsmileleft: .9, mouthsmileright: .9, eyesquintleft: .4, eyesquintright: .4 },  // 활짝 미소
+  { jawopen: .75 },                                                                    // 아
+  { mouthpucker: .95, mouthfunnel: .4, jawopen: .12 },                                 // 우 (오므림)
+  { jawopen: .45, browinnerup: 1, eyewideleft: .7, eyewideright: .7 },                 // 놀람
+  { eyeblinkleft: 1, mouthsmileleft: .6, mouthsmileright: .3 },                        // 윙크
+  { eyelookoutleft: .9, eyelookinright: .9 },                                          // 시선 왼쪽
+  { eyelookoutright: .9, eyelookinleft: .9 },                                          // 시선 오른쪽
+];
+let demoTarget = null, demoTimer = null;
+const demoW = {};
+const showcase = AvatarCore.makeShowcase(pose => new Promise(res => {
+  demoTarget = pose;
+  setTimeout(() => { demoTarget = null; setTimeout(res, 320); }, 1300);
+}), POSES);
+function scheduleDemo(delay) {
+  clearTimeout(demoTimer);
+  demoTimer = setTimeout(() => {
+    if (mirror.on || showcase.running) return;
+    setStatus("🎬 자동 시연 중 — 🪞 미러링 시작을 누르면 직접 조종할 수 있어요");
+    showcase.play().then(() => {
+      if (!mirror.on) { setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요"); scheduleDemo(5000); }
+    });
+  }, delay);
+}
+function demoApply() {
+  if (mirror.on) { for (const k in demoW) delete demoW[k]; return; }
+  for (const k in demoW) if (!demoTarget || !(k in demoTarget)) demoW[k] *= 0.85;   // 지난 포즈 채널 감쇠
+  if (demoTarget) for (const k in demoTarget) demoW[k] = 0.85 * (demoW[k] || 0) + 0.15 * demoTarget[k];
+  for (const k in demoW) {
+    if (demoW[k] < 0.01) delete demoW[k];
+    else smooth[k] = Math.max(smooth[k] || 0, demoW[k]);
+  }
+}
+scheduleDemo(2200);   // 첫 진입 — 모델 로드될 즈음 시연 시작
 
 // ================= 분석 패널: 내 얼굴에 알고리즘이 적용된 모습 (비교군) =================
 // 웹캠(거울 반전) + 478점 랜드마크(홍채 10점 강조) + 캐릭터를 실제로 구동하는 채널값 막대
@@ -278,6 +319,7 @@ if (new URLSearchParams(location.search).get("char") === "boy") {
 function render(now) {
   requestAnimationFrame(render);
   smooth = {};
+  demoApply();   // 자동 쇼케이스 (미러링 off 일 때만)
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
   drawPanel();   // 비교군 — 캐릭터와 같은 프레임의 채널값

@@ -389,7 +389,8 @@ function render(now) {
 
   // 2D 캐릭터 (소년·소녀) — 그리기는 코어, 워프 레이어 토글만 페이지
   if (!parts.base || !manifest) return;
-  headWander(shakeEl, now, W("jawopen"), 0.5, null);
+  // 머리 움직임 토글 ON 이면 웹캠 고개 방향을 유휴 흔들림 위에 합성 (2D: roll=회전, yaw/pitch=이동)
+  headWander(shakeEl, now, W("jawopen"), 0.5, null, $("headMove").checked ? mirror.head() : null);
   if (warp.ready) { glCanvas.style.visibility = "visible"; warp.render(); }
   else { glCanvas.style.visibility = "hidden"; }
   const warpOn = AvatarCore.drawChar2D(ctx2d, {

@@ -129,9 +129,13 @@ function make2D(canvas, name) {
     await Promise.all(PARTS.map(f => new Promise(res => { const im = new Image(); im.onload = () => { parts[f] = im; res(); }; im.onerror = res; im.src = `characters/${name}/${f}.png`; })));
     ready();
   })();
-  // 워프 없이(경량) 코어로 그린다 — 눈썹 내림·턱 오프셋까지 스튜디오와 동일 규칙
-  return { render(blink) {
+  // 워프 없이(경량) 코어로 그린다 — 눈썹 내림·턱 오프셋까지 스튜디오와 동일 규칙.
+  // 머리 자세는 캔버스 자체에 CSS 변환(2D: roll=회전, yaw/pitch=이동) — shake 래퍼가 없는 구조라 직접.
+  return { render(blink, h) {
     AvatarCore.drawChar2D(ctx, { parts, manifest, W, blink, gaze: gaze(0, W) });
+    canvas.style.transform = h
+      ? `rotate(${h[2].toFixed(5)}rad) translate(${(h[0] * 10).toFixed(3)}%, ${(h[1] * 10).toFixed(3)}%)`
+      : "";
   } };
 }
 
@@ -178,9 +182,9 @@ function frame(now) {
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
   drawMe();   // 내 얼굴 + 랜드마크
-  const head = $("headMove").checked ? mirror.head() : null;   // 석고 두 개만 머리 회전 (2D 는 headWander 유지)
+  const head = $("headMove").checked ? mirror.head() : null;   // 네 캐릭터 공통 머리 자세
   heads.mark.render(blink, head); heads.claire.render(blink, head);
-  chars.boy.render(blink); chars.girl.render(blink);
+  chars.boy.render(blink, head); chars.girl.render(blink, head);
   if (recCtx) compositeRec();
 }
 requestAnimationFrame(frame);

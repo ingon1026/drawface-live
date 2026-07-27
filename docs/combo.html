@@ -94,39 +94,22 @@ function make3D(canvas, glbName) {
   const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1.5, 2, 3); scene.add(key);
   const rim = new THREE.DirectionalLight(0x77aaff, 1.0); rim.position.set(-2, 1, -2); scene.add(rim);
   const group = new THREE.Group(); scene.add(group);
-  let mesh = null, morphMap = [], eyes = [], nod = 0;
-  function makeEye(sign, box) {
-    const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3()), k = s.y / 41.5;
-    const eg = new THREE.Group();
-    eg.position.set(c.x + sign * 0.111 * s.x, c.y + 0.151 * s.y, c.z + 0.284 * s.z);
-    const mat = (col, r) => new THREE.MeshStandardMaterial({ color: col, roughness: r });
-    const sc = new THREE.Mesh(new THREE.SphereGeometry(1.15 * k, 32, 16), mat(0xf2f0ee, 0.35));
-    const ir = new THREE.Mesh(new THREE.SphereGeometry(0.46 * k, 24, 12), mat(0x44546e, 0.3)); ir.position.z = 0.78 * k;
-    const pu = new THREE.Mesh(new THREE.SphereGeometry(0.2 * k, 16, 8), mat(0x0c0c0c, 0.4)); pu.position.z = 1.0 * k;
-    eg.add(sc, ir, pu); group.add(eg); return eg;
-  }
+  let mounted = null, nod = 0;
   loader.load(`assets3d/${glbName}.glb?v=3`, g => {
-    // 모프 없는 메시를 집으면 표정이 죽으므로 모프 보유 메시만 (다중이면 마지막 = 헤드)
-    g.scene.traverse(o => { if (o.isMesh && o.morphTargetInfluences) { mesh = o; o.frustumCulled = false; } });
-    if (!mesh) { setStatus(glbName + ": 모프타깃 메시 없음", true); return; }
-    morphMap = Object.entries(mesh.morphTargetDictionary || {}).map(([n, i]) => [AvatarCore.norm(n), i]);
-    group.add(g.scene);
-    const box = new THREE.Box3().setFromObject(g.scene);
-    const c = box.getCenter(new THREE.Vector3());
-    eyes = [makeEye(1, box), makeEye(-1, box)];
-    group.position.set(-c.x, -c.y, -c.z);
-    camera.position.set(0, 1.5, 80); camera.lookAt(0, 0, 0);
+    // 석고 헤드 2종만 쓰므로 eyeSpheres·headFrac 고정 (코어가 모프 수집·눈알·프레이밍까지)
+    mounted = AvatarCore.mountHead3D(THREE, { group, camera, gltf: g,
+      cfg: { eyeSpheres: true, headFrac: 1 } });
+    if (!mounted) { setStatus(glbName + ": 모프타깃 메시 없음", true); return; }
     ready();
   }, undefined, e => setStatus(glbName + " 로드 실패: " + e, true));
   const gaze = AvatarCore.makeGaze({ gx: 0, gy: 0 }, { mulX: 0.8, mulY: 0.5 });
   function resize() { const r = canvas.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = 1; camera.updateProjectionMatrix(); }
   new ResizeObserver(resize).observe(canvas);
   return { render(blink, h) {
-    if (!mesh) return;
-    const inf = mesh.morphTargetInfluences;
-    for (const [k, idx] of morphMap) inf[idx] = (k === "eyeblinkleft" || k === "eyeblinkright") ? blink : (smooth[k] || 0);
+    if (!mounted) return;
+    AvatarCore.applyMorphs(mounted.morphMeshes, smooth, blink);
     const [gx, gy] = gaze(0, W);
-    for (const e of eyes) e.rotation.set(gy * 0.3, gx * 0.4, 0);
+    for (const e of mounted.eyes) e.rotation.set(gy * 0.3, gx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
     // 머리 회전: h 가 오면 웹캠 머리 자세를 얹고, 없으면 끄덕임만 (기존 동작)
     if (h) group.rotation.set(h[1] + nod * 0.04, h[0], h[2]);

@@ -129,17 +129,9 @@ function make2D(canvas, name) {
     await Promise.all(PARTS.map(f => new Promise(res => { const im = new Image(); im.onload = () => { parts[f] = im; res(); }; im.onerror = res; im.src = `characters/${name}/${f}.png`; })));
     ready();
   })();
+  // 워프 없이(경량) 코어로 그린다 — 눈썹 내림·턱 오프셋까지 스튜디오와 동일 규칙
   return { render(blink) {
-    if (!parts.base) return;
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 512, 512);
-    const draw = (n, dy = 0) => parts[n] && ctx.drawImage(parts[n], 0, dy);
-    const drawXY = (n, dx, dy) => parts[n] && ctx.drawImage(parts[n], dx, dy);
-    const browUp = -(manifest.browRange || 0) * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2);
-    draw("base"); draw("brow_L", browUp); draw("brow_R", browUp);
-    const [gx, gy] = gaze(0, W);
-    if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
-    else { draw("eye_L_open"); draw("eye_R_open"); const pr = manifest.pupilRange || 0; drawXY("pupil_L", gx * pr, gy * pr); drawXY("pupil_R", gx * pr, gy * pr); }
-    AvatarCore.drawVectorMouth(ctx, W, manifest, (manifest.jawDrop || 0) * W("jawopen"));
+    AvatarCore.drawChar2D(ctx, { parts, manifest, W, blink, gaze: gaze(0, W) });
   } };
 }
 

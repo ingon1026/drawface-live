@@ -387,30 +387,14 @@ function render(now) {
     return;
   }
 
-  // 2D 캐릭터
+  // 2D 캐릭터 (소년·소녀) — 그리기는 코어, 워프 레이어 토글만 페이지
   if (!parts.base || !manifest) return;
   headWander(shakeEl, now, W("jawopen"), 0.5, null);
-  const warpOn = warp.ready;   // 워프 로드 전엔 base 폴백
-  if (warpOn) { glCanvas.style.visibility = "visible"; warp.render(); }
+  if (warp.ready) { glCanvas.style.visibility = "visible"; warp.render(); }
   else { glCanvas.style.visibility = "hidden"; }
-  ctx2d.clearRect(0, 0, 512, 512);
-  const draw = (n, dyy = 0) => parts[n] && ctx2d.drawImage(parts[n], 0, dyy);
-  const drawXY = (n, dx, dyy) => parts[n] && ctx2d.drawImage(parts[n], dx, dyy);
-  if (!warpOn) { if (!CLEAN) { ctx2d.fillStyle = "#fff"; ctx2d.fillRect(0, 0, 512, 512); } draw("base"); }
-  const [gzx, gzy] = gaze2d(0, W);
-
-  const browUp = -(manifest.browRange || 0) * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2)
-               + (manifest.browRange || 0) * 0.8 * (W("browdownleft") + W("browdownright")) / 2;
-  draw("brow_L", browUp); draw("brow_R", browUp);
-
-  if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
-  else {
-    draw("eye_L_open"); draw("eye_R_open");
-    const pr = manifest.pupilRange || 0;
-    drawXY("pupil_L", gzx * pr, gzy * pr); drawXY("pupil_R", gzx * pr, gzy * pr);
-  }
-  const jawDy = warp.jawOverlayDy(W("jawopen"), warpOn, manifest);
-  AvatarCore.drawVectorMouth(ctx2d, W, manifest, jawDy);
+  const warpOn = AvatarCore.drawChar2D(ctx2d, {
+    parts, manifest, W, blink, gaze: gaze2d(0, W), warp, clearBg: !CLEAN,
+  });
 
   if (recCv) {   // 2D 녹화 합성 — 두 레이어(gl 워프 + cv 오버레이)
     const c = recCv.getContext("2d");

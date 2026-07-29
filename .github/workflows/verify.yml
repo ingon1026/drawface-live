@@ -1,0 +1,30 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install Python dependencies
+        run: |
+          uv venv --python 3.12
+          uv pip install --python .venv/bin/python --requirement requirements.txt
+      - name: Python tests
+        run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=. .venv/bin/python -m pytest -q tests
+      - name: JavaScript syntax
+        run: rg --files docs/js -g '*.js' | sort | xargs -r -n1 node --check
+      - name: Static asset cache graph
+        run: bash scripts/check_web_asset_versions.sh
+      - name: Whitespace errors
+        run: git diff --check

@@ -2,7 +2,7 @@
 // _ink_color, snap_to_ink). Pixel work goes through ImageData typed arrays;
 // canvas API is used only for whole-image ops (drawImage scaling), never in
 // per-pixel loops. Shared low-level helpers are exported for onboard.js/derive.js.
-import { CANVAS } from "./config.js";
+import { CANVAS } from "./config.js?v=20260729.3";
 
 export function newCanvas(w, h) {
   const c = document.createElement("canvas");

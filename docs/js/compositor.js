@@ -2,9 +2,9 @@
 // SpriteCharacter.compose + apply_head_transform. Sprites are 512x512 RGBA
 // overlays aligned to a flattened base; canvas alpha compositing replaces the
 // premultiplied numpy math. Sprite keys 'L'/'R' are VIEWER-left/right.
-import { CANVAS } from "./config.js";
-import { newCanvas } from "./imageops.js";
-import { deriveAll } from "./derive.js";
+import { CANVAS } from "./config.js?v=20260729.3";
+import { newCanvas } from "./imageops.js?v=20260729.3";
+import { deriveAll } from "./derive.js?v=20260729.3";
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 

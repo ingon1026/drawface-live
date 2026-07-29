@@ -224,6 +224,10 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  
 
 Python 의존성은 [`requirements.txt`](requirements.txt)에 검증된 버전으로 고정돼 있습니다.
 
+웹 정적 파일은 [`docs/draw.html`](docs/draw.html)의 자산 버전으로 캐시를 구분합니다. 웹 JS/CSS를
+배포할 때는 `scripts/bump_web_asset_version.sh <버전>`을 실행해 모듈 그래프 전체의 버전을 함께
+올리세요. GitHub Actions는 Python 테스트·JS 문법·자산 버전 일관성을 매 푸시마다 검사합니다.
+
 > ROS 등 전역 pytest 플러그인이 설치된 환경에서도 프로젝트 테스트만 실행하도록
 > `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`을 붙입니다.
 

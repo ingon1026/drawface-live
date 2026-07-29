@@ -3,7 +3,7 @@
 //   in : {type:"frame", bitmap:ImageBitmap (transferred), ts}
 //   out: {type:"ready"} once initialized, {type:"fail", message} on init error,
 //        {type:"result", ts, obs|null} per frame (obs matches tracker.js detect()).
-import { CDN_URL, WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js";
+import { CDN_URL, WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js?v=20260729.3";
 
 // tasks-vision loads its classic wasm loader via importScripts(), which throws
 // in module workers. Shim it with sync XHR + indirect eval: synchronous like

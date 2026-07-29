@@ -1,8 +1,8 @@
 // Port of app/onboard.py build_character: turns a fitted 512 drawing + eye/mouth
 // coordinates into base + eye sprites and a proceduralMouth manifest. Geometry
 // matches the python exactly so a web-onboarded character equals a CLI one.
-import { CANVAS, DERIVE } from "./config.js";
-import { newCanvas, snapToInk, inpaintRegion, inkColor, rad } from "./imageops.js";
+import { CANVAS, DERIVE } from "./config.js?v=20260729.3";
+import { newCanvas, snapToInk, inpaintRegion, inkColor, rad } from "./imageops.js?v=20260729.3";
 
 /** Transparent 512 canvas with the closed-eye arc stroke (PIL arc 20..160, width 4). */
 function drawClosedEye(cx, cy, eyeHalf, colorHex) {

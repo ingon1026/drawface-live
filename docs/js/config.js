@@ -23,6 +23,9 @@ export const CONFIG = {
   // 크게 쩍 벌려야만 입이 열렸다 — 보통 벌림에도 반응하게 상향 (warp.js JAW_RAMP 하향과 세트).
   warp: { blinkGain: 2.0, smileGain: 2.0, jawGain: 2.2, headParallax: 1.0 },
   idle: { breathPeriodS: 3.6, breathAmp: 0.05, blinkMinS: 4.0, blinkMaxS: 7.0, blinkMs: 260 },
+  // Keep tracking responsive on sustained low-end CPU pressure by temporarily
+  // rendering the cached sprite path instead of the mesh.
+  performance: { frameBudgetMs: 28, degradeAfterMs: 1800, recoverAfterMs: 4500 },
 };
 
 export const CANVAS = 512;

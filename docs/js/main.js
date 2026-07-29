@@ -1,17 +1,18 @@
 // DrawFace Live web — UI wiring and the render loop (browser twin of app/main.py).
-import { CANVAS, CONFIG, SOURCE_MAX } from "./config.js";
-import { fit512, fitTo, expandBoxToInk, newCanvas } from "./imageops.js";
-import { buildCharacter } from "./onboard.js";
-import { deriveAll } from "./derive.js";
-import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js";
+import { CANVAS, CONFIG, SOURCE_MAX } from "./config.js?v=20260729.3";
+import { fit512, fitTo, expandBoxToInk, newCanvas } from "./imageops.js?v=20260729.3";
+import { buildCharacter } from "./onboard.js?v=20260729.3";
+import { deriveAll } from "./derive.js?v=20260729.3";
+import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js?v=20260729.3";
 import {
   SMOOTH_KEYS, OneEuro, IdleMotion, TriStateEye, Calibration,
   pickMouth, eyeKeyForUserSide,
-} from "./pipeline.js";
-import { createTracker, createWorkerTracker, detectOnImage } from "./tracker.js";
-import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js";
-import { buildWarpRig, renderWarp } from "./warp.js";
-import { StickerFx } from "./effects.js";
+} from "./pipeline.js?v=20260729.3";
+import { createTracker, createWorkerTracker, detectOnImage } from "./tracker.js?v=20260729.3";
+import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js?v=20260729.3";
+import { buildWarpRig, renderWarp } from "./warp.js?v=20260729.3";
+import { StickerFx } from "./effects.js?v=20260729.3";
+import { RenderPerformance } from "./performance.js?v=20260729.3";
 
 const $ = (id) => document.getElementById(id);
 const status = (msg) => { $("status").textContent = msg; };
@@ -437,6 +438,7 @@ async function start() {
       smoothed: Object.fromEntries(SMOOTH_KEYS.map((k) => [k, 0])),
       head: { yaw: 0, pitch: 0, roll: 0 },
       lastSeen: performance.now(), fps: 0, tPrev: performance.now(), workerTs: -1,
+      perf: new RenderPerformance(CONFIG.performance),
       outCtx: $("output").getContext("2d"),      // hoisted out of the frame loop
       prevCtx: $("preview").getContext("2d"),
       fx: new StickerFx(outSize),
@@ -464,7 +466,9 @@ function loop(video, char, st) {
   const render = (now) => {
     if (!run.on) return;
     try {
+      const began = performance.now();
       loopBody(video, char, st, now);
+      st.perf.record(now, performance.now() - began);
     } catch (err) {
       status(`루프 오류: ${err.message}`);
       console.error(err);
@@ -580,7 +584,8 @@ function loopBody(video, char, st, now) {
   }
   const mouth = pickMouth(st.smoothed, CONFIG.mouth);
 
-  const useWarp = char.warp && $("warpChk").checked;
+  const economy = st.perf.useEconomy(now);
+  const useWarp = char.warp && $("warpChk").checked && !economy;
   if (useWarp) {
     const g = CONFIG.warp;
     const blink = {};
@@ -606,7 +611,7 @@ function loopBody(video, char, st, now) {
   } else {
     drawScene(st.outCtx, composeCharacter(char, eyeStates.L, eyeStates.R, mouth), st.head, CONFIG.head);
   }
-  if ($("fxChk").checked) {
+  if ($("fxChk").checked && !economy) {
     if (!st.calib.active) st.fx.update(st.smoothed, now);
     st.fx.draw(st.outCtx, now);
   }
@@ -619,7 +624,7 @@ function loopBody(video, char, st, now) {
   const rec = run.recording ? "  ● REC" : "";
   status((st.calib.active
     ? "캘리브레이션 중 — 정면을 보고 무표정을 유지하세요"
-    : `${st.fps.toFixed(0)} FPS${run.workerTracker ? " · worker" : ""} · ${useWarp ? "warp" : "sprite"} · ${obs ? "face:OK" : "face:LOST"}`
+    : `${st.fps.toFixed(0)} FPS · ${st.perf.label()}${run.workerTracker ? " · worker" : ""} · ${useWarp ? "warp" : "sprite"} · ${obs ? "face:OK" : "face:LOST"}`
       + (useWarp ? "" : ` · L:${eyeStates.L} R:${eyeStates.R} mouth:${mouth}`)) + rec);
 }
 

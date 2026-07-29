@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - uses: astral-sh/setup-uv@v5
       - name: Install command-line tools
         run: sudo apt-get update && sudo apt-get install -y ripgrep
@@ -26,6 +29,11 @@ jobs:
         run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=. .venv/bin/python -m pytest -q tests
       - name: JavaScript syntax
         run: rg --files docs/js -g '*.js' | sort | xargs -r -n1 node --check
+      - name: Browser E2E
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:e2e
       - name: Static asset cache graph
         run: bash scripts/check_web_asset_versions.sh
       - name: Whitespace errors

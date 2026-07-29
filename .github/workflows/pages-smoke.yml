@@ -1,0 +1,53 @@
+name: GitHub Pages smoke
+
+on:
+  workflow_run:
+    workflows: [Verify]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-smoke-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Read deployed asset version
+        id: asset-version
+        run: |
+          version="$(sed -n 's/.*js\\/main\\.js?v=\\([^\"]*\\).*/\\1/p' docs/draw.html)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install browser test dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Check published Pages UI
+        env:
+          PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          PAGES_ASSET_VERSION: ${{ steps.asset-version.outputs.version }}
+        run: npx playwright test -c playwright.pages-smoke.config.cjs
+      - name: Upload Pages smoke failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-smoke-failures
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7

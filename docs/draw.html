@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DrawFace Live — 내 손그림</title>
-<link rel="stylesheet" href="style.css?v=20260729.3">
+<link rel="stylesheet" href="style.css?v=20260729.5">
 </head>
 <body>
 <header>
@@ -36,8 +36,16 @@
     <label class="check"><input id="vizChk" type="checkbox" checked> 추적 시각화</label>
     <label class="check"><input id="fxChk" type="checkbox" checked> 스티커 이펙트</label>
     <label class="check"><input id="warpChk" type="checkbox" checked> 워프 엔진</label>
+    <label>성능 모드
+      <select id="perfMode">
+        <option value="auto">자동 (권장)</option>
+        <option value="full">고품질 고정</option>
+        <option value="economy">절전 고정</option>
+      </select>
+    </label>
 
     <button id="startBtn" class="primary">시작</button>
+    <button id="trackerRetryBtn" hidden>추적 모델 다시 시도</button>
     <button id="calibBtn" disabled>재캘리브레이션</button>
     <button id="recordBtn" disabled title="결과 캔버스를 WebM 영상으로 저장">녹화 시작</button>
 
@@ -86,6 +94,6 @@
   <a href="https://github.com/ingon1026/drawface-live">GitHub</a>
 </footer>
 
-<script type="module" src="js/main.js?v=20260729.3"></script>
+<script type="module" src="js/main.js?v=20260729.5"></script>
 </body>
 </html>

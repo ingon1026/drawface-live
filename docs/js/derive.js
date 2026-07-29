@@ -2,8 +2,8 @@
 // procedural visemes from a closed-mouth stroke. No new artwork. deriveAll never
 // overwrites an existing canvas key (hand-made sprites win). Pixel work is on
 // typed arrays; canvas API only for whole-image ops (arc/ellipse draw, resize).
-import { CANVAS, DERIVE } from "./config.js?v=20260729.3";
-import { newCanvas, getData, canvasFromData, hexToRgb, median, rad, bankersRound, bboxAlpha } from "./imageops.js?v=20260729.3";
+import { CANVAS, DERIVE } from "./config.js?v=20260729.5";
+import { newCanvas, getData, canvasFromData, hexToRgb, median, rad, bankersRound, bboxAlpha } from "./imageops.js?v=20260729.5";
 
 const N = CANVAS * CANVAS;
 

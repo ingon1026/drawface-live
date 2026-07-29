@@ -115,6 +115,38 @@ async function mouseDrag(page, canvas, from, to) {
   await page.mouse.up();
 }
 
+test("performance mode lets the user override automatic quality", async ({ page }) => {
+  await page.goto("/draw.html");
+  const mode = page.locator("#perfMode");
+  await expect(mode).toHaveValue("auto");
+  await mode.selectOption("full");
+  await expect(mode).toHaveValue("full");
+  await mode.selectOption("economy");
+  await expect(mode).toHaveValue("economy");
+});
+
+test("MediaPipe load failure exposes a retry button", async ({ page }) => {
+  let cdnRequests = 0;
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "Worker", { configurable: true, value: undefined });
+  });
+  await page.route(/https:\/\/cdn\.jsdelivr\.net\//, (route) => {
+    cdnRequests += 1;
+    route.abort();
+  });
+  await page.goto("/draw.html");
+  await page.locator("#exampleBtn").click();
+  await expect(page.locator("#startBtn")).toBeEnabled();
+  await page.locator("#startBtn").click();
+  const retry = page.locator("#trackerRetryBtn");
+  await expect(retry).toBeVisible();
+  await expect(page.locator("#status")).toContainText("추적 모델 로딩 실패");
+  const firstAttempt = cdnRequests;
+  await retry.click();
+  await expect.poll(() => cdnRequests).toBeGreaterThan(firstAttempt);
+  await expect(retry).toBeVisible();
+});
+
 test("mouth box resizes from a corner and moves from its interior", async ({ page }) => {
   const canvas = await openManualOnboarding(page);
   const initial = await redMouthBox(page);

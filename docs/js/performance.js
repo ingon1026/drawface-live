@@ -2,7 +2,7 @@
 // in our own frame work (not time while a tab is backgrounded) and uses
 // hysteresis, so one GC pause never makes quality visibly flicker.
 export class RenderPerformance {
-  constructor({ frameBudgetMs, degradeAfterMs, recoverAfterMs }) {
+  constructor({ frameBudgetMs, degradeAfterMs, recoverAfterMs }, preference = "auto") {
     this.frameBudgetMs = frameBudgetMs;
     this.degradeAfterMs = degradeAfterMs;
     this.recoverAfterMs = recoverAfterMs;
@@ -11,12 +11,24 @@ export class RenderPerformance {
     this.slowSince = null;
     this.nextProbeAt = null;
     this.probing = false;
+    this.setPreference(preference);
+  }
+
+  setPreference(preference) {
+    this.preference = ["auto", "full", "economy"].includes(preference) ? preference : "auto";
+    this.slowSince = null;
+    this.nextProbeAt = null;
+    this.probing = false;
+    if (this.preference === "full") this.mode = "full";
+    if (this.preference === "economy") this.mode = "economy";
   }
 
   // In economy mode, periodically allow exactly one full-quality frame. The
   // result tells us whether CPU headroom really returned; simply measuring the
   // cheap sprite path would otherwise make a slow device oscillate forever.
   useEconomy(now) {
+    if (this.preference === "economy") return true;
+    if (this.preference === "full") return false;
     if (this.mode !== "economy") return false;
     if (this.nextProbeAt !== null && now >= this.nextProbeAt) {
       this.probing = true;
@@ -27,6 +39,7 @@ export class RenderPerformance {
 
   record(now, workMs) {
     this.workMs = this.workMs ? this.workMs * 0.85 + workMs * 0.15 : workMs;
+    if (this.preference !== "auto") return;
     // A probe must be judged on its own full-quality frame. The smoothed value
     // includes cheap economy frames and would incorrectly promote a slow device.
     const slow = (this.probing ? workMs : this.workMs) > this.frameBudgetMs;
@@ -50,5 +63,10 @@ export class RenderPerformance {
 
   get economical() { return this.mode === "economy"; }
 
-  label() { return `${this.workMs.toFixed(0)}ms${this.economical ? " · 절전" : ""}`; }
+  label() {
+    const policy = this.preference === "full" ? "고품질 고정"
+      : this.preference === "economy" ? "절전 고정"
+        : this.economical ? "자동 절전" : "자동";
+    return `${this.workMs.toFixed(0)}ms · ${policy}`;
+  }
 }

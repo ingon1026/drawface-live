@@ -1,18 +1,18 @@
 // DrawFace Live web — UI wiring and the render loop (browser twin of app/main.py).
-import { CANVAS, CONFIG, SOURCE_MAX } from "./config.js?v=20260729.3";
-import { fit512, fitTo, expandBoxToInk, newCanvas } from "./imageops.js?v=20260729.3";
-import { buildCharacter } from "./onboard.js?v=20260729.3";
-import { deriveAll } from "./derive.js?v=20260729.3";
-import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js?v=20260729.3";
+import { CANVAS, CONFIG, SOURCE_MAX } from "./config.js?v=20260729.5";
+import { fit512, fitTo, expandBoxToInk, newCanvas } from "./imageops.js?v=20260729.5";
+import { buildCharacter } from "./onboard.js?v=20260729.5";
+import { deriveAll } from "./derive.js?v=20260729.5";
+import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js?v=20260729.5";
 import {
   SMOOTH_KEYS, OneEuro, IdleMotion, TriStateEye, Calibration,
   pickMouth, eyeKeyForUserSide,
-} from "./pipeline.js?v=20260729.3";
-import { createTracker, createWorkerTracker, detectOnImage } from "./tracker.js?v=20260729.3";
-import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js?v=20260729.3";
-import { buildWarpRig, renderWarp } from "./warp.js?v=20260729.3";
-import { StickerFx } from "./effects.js?v=20260729.3";
-import { RenderPerformance } from "./performance.js?v=20260729.3";
+} from "./pipeline.js?v=20260729.5";
+import { createTracker, createWorkerTracker, detectOnImage } from "./tracker.js?v=20260729.5";
+import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js?v=20260729.5";
+import { buildWarpRig, renderWarp } from "./warp.js?v=20260729.5";
+import { StickerFx } from "./effects.js?v=20260729.5";
+import { RenderPerformance } from "./performance.js?v=20260729.5";
 
 const $ = (id) => document.getElementById(id);
 const status = (msg) => { $("status").textContent = msg; };
@@ -55,6 +55,15 @@ const CAM_ERRORS = {
   NotReadableError: "다른 프로그램이 카메라를 사용 중입니다 — 해당 앱을 닫고 다시 시도하세요",
   OverconstrainedError: "선택한 카메라가 요청 해상도를 지원하지 않습니다 — 다른 카메라를 선택해 보세요",
 };
+
+function showTrackerRetry(message) {
+  status(`${message} — 네트워크를 확인한 뒤 다시 시도하세요`);
+  $("trackerRetryBtn").hidden = false;
+}
+
+function clearTrackerRetry() {
+  $("trackerRetryBtn").hidden = true;
+}
 
 // ---------- character list ----------
 function refreshList(selectName) {
@@ -395,11 +404,14 @@ async function start() {
   const name = $("charSelect").value;
   if (!name) return;
   $("startBtn").disabled = true;
+  clearTrackerRetry();
+  let loadingTracker = true;
   try {
     status("추적 모델 로딩 중…");
     run.workerTracker = await createWorkerTracker(); // null → silent sync fallback
     if (run.workerTracker) console.log("[tracker] worker mode");
     else run.tracker ??= await createTracker();
+    loadingTracker = false;
     status("웹캠 여는 중…");
     const video_c = { width: CONFIG.camera.width, height: CONFIG.camera.height };
     if ($("camSelect").value) video_c.deviceId = { exact: $("camSelect").value };
@@ -438,7 +450,7 @@ async function start() {
       smoothed: Object.fromEntries(SMOOTH_KEYS.map((k) => [k, 0])),
       head: { yaw: 0, pitch: 0, roll: 0 },
       lastSeen: performance.now(), fps: 0, tPrev: performance.now(), workerTs: -1,
-      perf: new RenderPerformance(CONFIG.performance),
+      perf: new RenderPerformance(CONFIG.performance, $("perfMode").value),
       outCtx: $("output").getContext("2d"),      // hoisted out of the frame loop
       prevCtx: $("preview").getContext("2d"),
       fx: new StickerFx(outSize),
@@ -451,14 +463,16 @@ async function start() {
     $("recordBtn").disabled = !("MediaRecorder" in window && "captureStream" in $("output"));
     $("calibBtn").onclick = () => st.calib.restart();
     $("mirrorChk").onchange = () => { st.mirror = $("mirrorChk").checked; };
+    $("perfMode").onchange = () => st.perf.setPreference($("perfMode").value);
     window.onkeydown = (e) => {
       if (e.key === "c") st.calib.restart();
       if (e.key === "m") { $("mirrorChk").checked = !$("mirrorChk").checked; st.mirror = $("mirrorChk").checked; }
     };
     loop(video, char, st);
   } catch (err) {
-    status(`시작 실패: ${err.message}`);
     stop();
+    if (loadingTracker) showTrackerRetry(`추적 모델 로딩 실패: ${err.message}`);
+    else status(`시작 실패: ${err.message}`);
   }
 }
 
@@ -515,8 +529,8 @@ function workerObserve(video, st, now) {
         .then((tracker) => { run.tracker = tracker; })
         .catch((err) => {
           if (run.on) {
-            status(`추적 복구 실패: ${err.message}`);
             stop();
+            showTrackerRetry(`추적 복구 실패: ${err.message}`);
           }
         })
         .finally(() => { run.trackerLoading = null; });
@@ -716,6 +730,7 @@ function stopRecording() {
 $("recordBtn").onclick = () => (run.recording ? stopRecording() : startRecording());
 
 $("startBtn").onclick = () => (run.on ? stop() : start());
+$("trackerRetryBtn").onclick = () => start();
 
 refreshList();
 refreshCameras();

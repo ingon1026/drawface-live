@@ -11,10 +11,10 @@
 // neutral — they render as a mesh-following layer crossfaded by jaw (python
 // still bakes them); (3) JAW_RAMP/jawGain are tuned lower/higher for
 // talk-level jaw response (mirrored back into app.yaml/warp_rig).
-import Delaunator from "./delaunator.js?v=20260729.3";
-import { CANVAS } from "./config.js?v=20260729.3";
-import { newCanvas, getData, hexToRgb, bboxAlpha } from "./imageops.js?v=20260729.3";
-import { composeCharacter } from "./compositor.js?v=20260729.3";
+import Delaunator from "./delaunator.js?v=20260729.5";
+import { CANVAS } from "./config.js?v=20260729.5";
+import { newCanvas, getData, hexToRgb, bboxAlpha } from "./imageops.js?v=20260729.5";
+import { composeCharacter } from "./compositor.js?v=20260729.5";
 
 // MediaPipe 478-landmark topology (viewer-left = image-left) — keep in sync
 // with app/warp_rig.py.

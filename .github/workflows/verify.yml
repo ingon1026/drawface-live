@@ -34,6 +34,16 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failures
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Static asset cache graph
         run: bash scripts/check_web_asset_versions.sh
       - name: Whitespace errors

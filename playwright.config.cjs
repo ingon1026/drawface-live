@@ -8,6 +8,9 @@ module.exports = defineConfig({
     baseURL: "http://127.0.0.1:4173",
     browserName: "chromium",
     headless: true,
+    screenshot: "only-on-failure",
+    trace: "retain-on-failure",
+    video: "retain-on-failure",
   },
   webServer: {
     command: "python3 -m http.server 4173 --directory docs",

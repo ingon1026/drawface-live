@@ -121,8 +121,18 @@ test("performance mode lets the user override automatic quality", async ({ page 
   await expect(mode).toHaveValue("auto");
   await mode.selectOption("full");
   await expect(mode).toHaveValue("full");
+  await page.reload();
+  await expect(mode).toHaveValue("full");
   await mode.selectOption("economy");
   await expect(mode).toHaveValue("economy");
+  const automatic = await page.evaluate(async () => {
+    const { RenderPerformance } = await import(`/js/performance.js?v=${Date.now()}`);
+    const perf = new RenderPerformance({ frameBudgetMs: 10, degradeAfterMs: 100, recoverAfterMs: 100 }, "economy");
+    const forcedEconomy = perf.useEconomy(0);
+    perf.setPreference("auto");
+    return { forcedEconomy, automaticEconomy: perf.useEconomy(1), mode: perf.mode };
+  });
+  expect(automatic).toEqual({ forcedEconomy: true, automaticEconomy: false, mode: "full" });
 });
 
 test("MediaPipe load failure exposes a retry button", async ({ page }) => {

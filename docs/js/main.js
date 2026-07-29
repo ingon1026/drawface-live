@@ -1,18 +1,18 @@
 // DrawFace Live web — UI wiring and the render loop (browser twin of app/main.py).
-import { CANVAS, CONFIG, SOURCE_MAX } from "./config.js?v=20260729.5";
-import { fit512, fitTo, expandBoxToInk, newCanvas } from "./imageops.js?v=20260729.5";
-import { buildCharacter } from "./onboard.js?v=20260729.5";
-import { deriveAll } from "./derive.js?v=20260729.5";
-import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js?v=20260729.5";
+import { CANVAS, CONFIG, SOURCE_MAX } from "./config.js?v=20260729.6";
+import { fit512, fitTo, expandBoxToInk, newCanvas } from "./imageops.js?v=20260729.6";
+import { buildCharacter } from "./onboard.js?v=20260729.6";
+import { deriveAll } from "./derive.js?v=20260729.6";
+import { listCharacters, saveCharacter, deleteCharacter, loadCharacter } from "./store.js?v=20260729.6";
 import {
   SMOOTH_KEYS, OneEuro, IdleMotion, TriStateEye, Calibration,
   pickMouth, eyeKeyForUserSide,
-} from "./pipeline.js?v=20260729.5";
-import { createTracker, createWorkerTracker, detectOnImage } from "./tracker.js?v=20260729.5";
-import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js?v=20260729.5";
-import { buildWarpRig, renderWarp } from "./warp.js?v=20260729.5";
-import { StickerFx } from "./effects.js?v=20260729.5";
-import { RenderPerformance } from "./performance.js?v=20260729.5";
+} from "./pipeline.js?v=20260729.6";
+import { createTracker, createWorkerTracker, detectOnImage } from "./tracker.js?v=20260729.6";
+import { prepareCharacter, composeCharacter, drawScene } from "./compositor.js?v=20260729.6";
+import { buildWarpRig, renderWarp } from "./warp.js?v=20260729.6";
+import { StickerFx } from "./effects.js?v=20260729.6";
+import { RenderPerformance } from "./performance.js?v=20260729.6";
 
 const $ = (id) => document.getElementById(id);
 const status = (msg) => { $("status").textContent = msg; };
@@ -26,6 +26,8 @@ const VIZ_BARS = [
   ["smile", "mouthSmileLeft"], ["pucker", "mouthPucker"],
 ];
 const CLICK_STEPS = ["왼눈 중심", "오른눈 중심", "입 좌상단", "입 우하단"];
+const PERF_MODE_KEY = "drawface-live:performance-mode";
+const PERF_MODES = new Set(["auto", "full", "economy"]);
 
 // In warp mode the mesh rolls the face itself, so the canvas keeps only this
 // share of the roll (body sways a little, face leads) — full canvas roll on top
@@ -63,6 +65,17 @@ function showTrackerRetry(message) {
 
 function clearTrackerRetry() {
   $("trackerRetryBtn").hidden = true;
+}
+
+function restorePerformanceMode() {
+  try {
+    const saved = localStorage.getItem(PERF_MODE_KEY);
+    if (PERF_MODES.has(saved)) $("perfMode").value = saved;
+  } catch { /* storage may be disabled in private browsing */ }
+}
+
+function savePerformanceMode(mode) {
+  try { localStorage.setItem(PERF_MODE_KEY, mode); } catch { /* preference remains session-only */ }
 }
 
 // ---------- character list ----------
@@ -397,7 +410,7 @@ $("deleteBtn").onclick = () => {
 // ---------- live loop ----------
 const run = {
   on: false, stream: null, tracker: null, workerTracker: null, trackerLoading: null,
-  video: null, raf: 0, videoFrame: 0, recording: null,
+  video: null, raf: 0, videoFrame: 0, recording: null, perf: null,
 };
 
 async function start() {
@@ -456,6 +469,7 @@ async function start() {
       fx: new StickerFx(outSize),
       idle: new IdleMotion(CONFIG.idle),
     };
+    run.perf = st.perf;
     run.on = true;
     $("startBtn").textContent = "정지";
     $("startBtn").disabled = false;
@@ -463,7 +477,6 @@ async function start() {
     $("recordBtn").disabled = !("MediaRecorder" in window && "captureStream" in $("output"));
     $("calibBtn").onclick = () => st.calib.restart();
     $("mirrorChk").onchange = () => { st.mirror = $("mirrorChk").checked; };
-    $("perfMode").onchange = () => st.perf.setPreference($("perfMode").value);
     window.onkeydown = (e) => {
       if (e.key === "c") st.calib.restart();
       if (e.key === "m") { $("mirrorChk").checked = !$("mirrorChk").checked; st.mirror = $("mirrorChk").checked; }
@@ -677,6 +690,7 @@ function stop() {
   run.stream?.getTracks().forEach((t) => t.stop());
   run.stream = null;
   run.video = null;
+  run.perf = null;
   window.onkeydown = null;
   $("startBtn").textContent = "시작";
   $("startBtn").disabled = $("charSelect").options.length === 0;
@@ -731,6 +745,12 @@ $("recordBtn").onclick = () => (run.recording ? stopRecording() : startRecording
 
 $("startBtn").onclick = () => (run.on ? stop() : start());
 $("trackerRetryBtn").onclick = () => start();
+$("perfMode").onchange = () => {
+  const mode = $("perfMode").value;
+  savePerformanceMode(mode);
+  run.perf?.setPreference(mode);
+};
 
+restorePerformanceMode();
 refreshList();
 refreshCameras();

@@ -1,7 +1,7 @@
 // MediaPipe Face Landmarker wrapper (browser only) — the web counterpart of
 // app/face_tracker.py. Loads @mediapipe/tasks-vision from CDN; detect() returns
 // blendshapes + head euler angles + normalized landmarks, or null when no face.
-import { CDN_URL, WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js?v=20260729.5";
+import { CDN_URL, WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js?v=20260729.6";
 
 // Load MediaPipe only when tracking or image auto-detection is requested. A
 // static CDN import prevents the entire authoring UI from starting when the
@@ -96,7 +96,7 @@ export function createWorkerTracker() {
   }
   let worker;
   try {
-    worker = new Worker(new URL("./trackworker.js?v=20260729.5", import.meta.url), { type: "module" });
+    worker = new Worker(new URL("./trackworker.js?v=20260729.6", import.meta.url), { type: "module" });
   } catch {
     return Promise.resolve(null);
   }

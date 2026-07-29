@@ -19,8 +19,9 @@ export class RenderPerformance {
     this.slowSince = null;
     this.nextProbeAt = null;
     this.probing = false;
-    if (this.preference === "full") this.mode = "full";
-    if (this.preference === "economy") this.mode = "economy";
+    // Returning to auto starts a fresh high-quality measurement window. Keeping
+    // an earlier forced economy mode here would leave it with no scheduled probe.
+    this.mode = this.preference === "economy" ? "economy" : "full";
   }
 
   // In economy mode, periodically allow exactly one full-quality frame. The

@@ -393,14 +393,12 @@ function render(now) {
   headWander(shakeEl, now, W("jawopen"), 0.5, null, $("headMove").checked ? mirror.head() : null);
   if (warp.ready) { glCanvas.style.visibility = "visible"; warp.render(); }
   else { glCanvas.style.visibility = "hidden"; }
-  const warpOn = AvatarCore.drawChar2D(ctx2d, {
-    parts, manifest, W, blink, gaze: gaze2d(0, W), warp, clearBg: !CLEAN,
-  });
+  AvatarCore.drawChar2D(ctx2d, { parts, manifest, W, blink, gaze: gaze2d(0, W), warp, clearBg: !CLEAN });
 
   if (recCv) {   // 2D 녹화 합성 — 두 레이어(gl 워프 + cv 오버레이)
     const c = recCv.getContext("2d");
     c.fillStyle = "#fff"; c.fillRect(0, 0, 512, 512);
-    if (warpOn) c.drawImage(glCanvas, 0, 0);
+    if (warp.ready) c.drawImage(glCanvas, 0, 0);
     c.drawImage(cv, 0, 0);
   }
 }

@@ -47,4 +47,4 @@ def test_build_character_produces_loadable_folder(tmp_path):
     # the eye dots must be erased from base
     base = Image.open(out / "base.png").convert("RGB")
     region = base.crop((149, 98, 173, 122))
-    assert all(sum(p) > 300 for p in region.getdata()), "eye ink not inpainted"
+    assert all(sum(p) > 300 for p in region.get_flattened_data()), "eye ink not inpainted"

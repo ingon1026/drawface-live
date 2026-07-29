@@ -65,11 +65,16 @@ self.onmessage = (ev) => {
   const { type, bitmap, ts } = ev.data ?? {};
   if (type !== "frame") return;
   let obs = null;
+  let error = null;
   try {
     if (landmarker) obs = detect(bitmap, ts);
+  } catch (err) {
+    // Never let one malformed frame or MediaPipe runtime fault kill the worker:
+    // the main thread needs a message to release its latest-wins gate and switch
+    // to the synchronous fallback.
+    error = err?.message ?? String(err);
   } finally {
     bitmap.close();
-    // Always answer — the main thread's latest-wins gate waits on this reply.
-    self.postMessage({ type: "result", ts, obs });
+    self.postMessage(error ? { type: "error", ts, message: error } : { type: "result", ts, obs });
   }
 };

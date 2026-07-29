@@ -385,7 +385,10 @@ $("deleteBtn").onclick = () => {
 };
 
 // ---------- live loop ----------
-const run = { on: false, stream: null, tracker: null, workerTracker: null, video: null, raf: 0, videoFrame: 0, recording: null };
+const run = {
+  on: false, stream: null, tracker: null, workerTracker: null, trackerLoading: null,
+  video: null, raf: 0, videoFrame: 0, recording: null,
+};
 
 async function start() {
   const name = $("charSelect").value;
@@ -496,6 +499,26 @@ function loop(video, char, st) {
 // keyed by its capture timestamp; smoothing uses that capture ts while
 // lost-face decay is keyed on when the last non-null obs ARRIVED.
 function workerObserve(video, st, now) {
+  if (run.workerTracker.failed()) {
+    // A worker-side MediaPipe fault must not leave the app with a permanently
+    // busy frame gate. Load the normal tracker lazily and keep rendering neutral
+    // frames while it initializes.
+    run.workerTracker.close();
+    run.workerTracker = null;
+    if (!run.tracker && !run.trackerLoading) {
+      status("추적 워커를 복구하는 중…");
+      run.trackerLoading = createTracker()
+        .then((tracker) => { run.tracker = tracker; })
+        .catch((err) => {
+          if (run.on) {
+            status(`추적 복구 실패: ${err.message}`);
+            stop();
+          }
+        })
+        .finally(() => { run.trackerLoading = null; });
+    }
+    return null;
+  }
   run.workerTracker.sendFrame(video, now);
   const res = run.workerTracker.latest();
   const obs = res?.obs ?? null;
@@ -524,10 +547,10 @@ function workerObserve(video, st, now) {
 }
 
 function loopBody(video, char, st, now) {
-  let obs;
+  let obs = null;
   if (run.workerTracker) {
     obs = workerObserve(video, st, now);
-  } else {
+  } else if (run.tracker) {
     obs = run.tracker.detect(video, now);
 
     if (obs) {

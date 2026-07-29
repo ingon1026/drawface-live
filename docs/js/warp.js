@@ -326,9 +326,7 @@ export function buildWarpRig(char) {
 }
 
 // Affine T with T(src_i) = dst_i via Cramer's rule; canvas matrix [a c e; b d f].
-function texTriangle(ctx, img, src, dst) {
-  const [[u0, v0], [u1, v1], [u2, v2]] = src;
-  const [[x0, y0], [x1, y1], [x2, y2]] = dst;
+function texTriangle(ctx, img, u0, v0, u1, v1, u2, v2, x0, y0, x1, y1, x2, y2) {
   const den = u0 * (v1 - v2) + u1 * (v2 - v0) + u2 * (v0 - v1);
   if (Math.abs(den) < 1e-6) return;
   const a = (x0 * (v1 - v2) + x1 * (v2 - v0) + x2 * (v0 - v1)) / den;
@@ -339,16 +337,14 @@ function texTriangle(ctx, img, src, dst) {
   const f = (y0 * (u1 * v2 - u2 * v1) + y1 * (u2 * v0 - u0 * v2) + y2 * (u0 * v1 - u1 * v0)) / den;
   // Inflate the clip triangle about its centroid to close antialiasing seams.
   const gx = (x0 + x1 + x2) / 3, gy = (y0 + y1 + y2) / 3;
-  const inflate = (x, y) => {
-    const len = Math.hypot(x - gx, y - gy) || 1;
-    const k = (len + 0.7) / len;
-    return [gx + (x - gx) * k, gy + (y - gy) * k];
-  };
+  const k0 = 1 + 0.7 / (Math.hypot(x0 - gx, y0 - gy) || 1);
+  const k1 = 1 + 0.7 / (Math.hypot(x1 - gx, y1 - gy) || 1);
+  const k2 = 1 + 0.7 / (Math.hypot(x2 - gx, y2 - gy) || 1);
   ctx.save();
   ctx.beginPath();
-  const [ix0, iy0] = inflate(x0, y0);
-  ctx.moveTo(ix0, iy0);
-  for (const [x, y] of [inflate(x1, y1), inflate(x2, y2)]) ctx.lineTo(x, y);
+  ctx.moveTo(gx + (x0 - gx) * k0, gy + (y0 - gy) * k0);
+  ctx.lineTo(gx + (x1 - gx) * k1, gy + (y1 - gy) * k1);
+  ctx.lineTo(gx + (x2 - gx) * k2, gy + (y2 - gy) * k2);
   ctx.closePath();
   ctx.clip();
   ctx.transform(a, b, c, d, e, f);
@@ -407,14 +403,18 @@ export function renderWarp(rig, ch) {
   if (active.length) {
     for (let t = 0; t < tris.length; t += 3) {
       const ia = tris[t], ib = tris[t + 1], ic = tris[t + 2];
-      const src = [verts[ia], verts[ib], verts[ic]];
-      const dst = [[wv[ia * 2], wv[ia * 2 + 1]], [wv[ib * 2], wv[ib * 2 + 1]], [wv[ic * 2], wv[ic * 2 + 1]]];
+      const u0 = verts[ia][0], v0 = verts[ia][1];
+      const u1 = verts[ib][0], v1 = verts[ib][1];
+      const u2 = verts[ic][0], v2 = verts[ic][1];
+      const x0 = wv[ia * 2], y0 = wv[ia * 2 + 1];
+      const x1 = wv[ib * 2], y1 = wv[ib * 2 + 1];
+      const x2 = wv[ic * 2], y2 = wv[ic * 2 + 1];
       let moved = 0;
-      for (let j = 0; j < 3; j++) {
-        moved = Math.max(moved, Math.abs(dst[j][0] - src[j][0]), Math.abs(dst[j][1] - src[j][1]));
-      }
+      moved = Math.max(Math.abs(x0 - u0), Math.abs(y0 - v0),
+                       Math.abs(x1 - u1), Math.abs(y1 - v1),
+                       Math.abs(x2 - u2), Math.abs(y2 - v2));
       if (moved < 0.25) continue;
-      texTriangle(ctx, rig.neutral, src, dst);
+      texTriangle(ctx, rig.neutral, u0, v0, u1, v1, u2, v2, x0, y0, x1, y1, x2, y2);
     }
   }
 

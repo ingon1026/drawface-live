@@ -199,10 +199,10 @@ PYTHONPATH=. .venv/bin/python scripts/warp_demo.py --image <그림.png> --out ou
 - **One Euro 필터**로 고정 EMA를 교체 — 정지 시엔 부드럽게, 빠른 움직임(깜빡임)엔 지연 없이
   따라갑니다. 파라미터는 [`configs/app.yaml`](configs/app.yaml)의 `smoothing:`
   (`min_cutoff`·`beta`·`head_min_cutoff`·`head_beta`), 웹은 `docs/js/config.js`에 동일 반영.
-- **실측 랜드마크 우선** (웹): 검출되는 그림은 온보딩 때 저장한 MediaPipe 랜드마크
-  (`manifest.landmarks`)로 눈꺼풀·입술 기하를 잡습니다 — 박스 합성 링보다 정밀. 단, 각 특징
-  링이 클릭한 박스에 잘 정렬됐을 때만 신뢰(중심 오차 1/4 박스 이내, 링 폭 ≥ 박스 45%),
-  아니면 박스 루트로. 낙서는 계속 박스 루트.
+- **입력 기하 통일** (웹): 자동 인식 결과의 랜드마크는 온보딩 보조 정보로만 저장하고,
+  실제 워프 메시는 눈·입 스프라이트의 알파 영역(사용자가 확정한 박스)에서 만듭니다. 손그림과
+  인식 가능한 일러스트가 같은 경로를 타므로, 원본에 남은 표정과 워프용 중립 표정이 어긋나
+  입이 이중으로 보이는 문제를 피합니다.
 - **유휴 모션**: 얼굴이 정지·소실돼도 살아 있게 — 미세한 호흡 흔들림(pitch 사인파)과
   4~7초 무깜빡임 시 자동 깜빡임. 설정은 양쪽 `idle:` 섹션.
 
@@ -221,6 +221,8 @@ PYTHONPATH= .venv/bin/python -m app.warp_live --character assets/sprites/<이름
 
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  # 테스트
 ```
+
+Python 의존성은 [`requirements.txt`](requirements.txt)에 검증된 버전으로 고정돼 있습니다.
 
 > ROS 등 전역 pytest 플러그인이 설치된 환경에서도 프로젝트 테스트만 실행하도록
 > `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`을 붙입니다.

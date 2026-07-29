@@ -1,20 +1,30 @@
 // MediaPipe Face Landmarker wrapper (browser only) — the web counterpart of
 // app/face_tracker.py. Loads @mediapipe/tasks-vision from CDN; detect() returns
 // blendshapes + head euler angles + normalized landmarks, or null when no face.
-import { WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js";
+import { CDN_URL, WASM_BASE, MODEL_URL, eulerFromMatrix } from "./trackconfig.js";
 
-// STATIC import (URL must match trackconfig.CDN_URL — workers can't share a
-// static specifier): the page's load event then waits for the module graph, so
-// UI listeners are wired the moment the page looks ready. A top-level dynamic
-// import left every button dead while the CDN resolved.
-import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17";
+// Load MediaPipe only when tracking or image auto-detection is requested. A
+// static CDN import prevents the entire authoring UI from starting when the
+// user is offline or the CDN is temporarily unavailable.
+let tasksVisionPromise = null;
+async function loadTasksVision() {
+  if (!tasksVisionPromise) {
+    tasksVisionPromise = import(CDN_URL).catch((err) => {
+      tasksVisionPromise = null; // a later retry may succeed after reconnecting
+      throw new Error(`could not load MediaPipe tasks-vision from CDN (offline?): ${err.message}`);
+    });
+  }
+  return tasksVisionPromise;
+}
 
 export async function createTracker() {
   let vision;
+  let FaceLandmarker, FilesetResolver;
   try {
+    ({ FaceLandmarker, FilesetResolver } = await loadTasksVision());
     vision = await FilesetResolver.forVisionTasks(WASM_BASE);
   } catch (e) {
-    throw new Error(`could not load MediaPipe tasks-vision wasm from CDN (offline?): ${e.message}`);
+    throw new Error(e.message ?? `could not load MediaPipe tasks-vision wasm from CDN (offline?)`);
   }
 
   const options = {
@@ -67,7 +77,8 @@ export async function createTracker() {
 // start() forever; past this we fall back to the sync tracker.
 const WORKER_INIT_TIMEOUT_MS = 15000;
 
-/** Off-main-thread tracker: {sendFrame(video, tsMs), latest() → {obs, ts}|null, close()}.
+/** Off-main-thread tracker: {sendFrame(video, tsMs), latest() → {obs, ts}|null,
+ * failed(), close()}.
  *  Latest-wins — sendFrame drops the frame while the worker is busy, so there is
  *  no queue growth. Resolves null when workers/bitmaps are unsupported or the
  *  worker fails to initialize (CDN imports can fail inside workers on some
@@ -86,28 +97,51 @@ export function createWorkerTracker() {
   return new Promise((resolve) => {
     let last = null;
     let busy = false;
+    let ready = false;
+    let failed = false;
+    let closed = false;
+    let timer;
     const api = {
       sendFrame(videoEl, tsMs) {
-        if (busy || !videoEl.videoWidth) return; // latest-wins: drop while busy
+        if (failed || busy || !videoEl.videoWidth) return; // latest-wins: drop while busy
         busy = true;
         createImageBitmap(videoEl).then(
-          (bitmap) => worker.postMessage({ type: "frame", bitmap, ts: tsMs }, [bitmap]),
+          (bitmap) => {
+            if (failed) { bitmap.close(); busy = false; return; }
+            try {
+              worker.postMessage({ type: "frame", bitmap, ts: tsMs }, [bitmap]);
+            } catch {
+              bitmap.close();
+              fail();
+            }
+          },
           () => { busy = false; },
         );
       },
       latest() {
         return last;
       },
+      failed() {
+        return failed;
+      },
       close() {
+        closed = true;
+        clearTimeout(timer);
         worker.terminate();
       },
     };
     const fail = () => {
+      if (closed || failed) return;
+      failed = true;
+      busy = false;
+      clearTimeout(timer);
       worker.terminate();
-      resolve(null);
+      if (!ready) resolve(null);
     };
-    const timer = setTimeout(fail, WORKER_INIT_TIMEOUT_MS);
-    worker.onerror = fail; // module-load failure never posts "fail" — only onerror fires
+    timer = setTimeout(fail, WORKER_INIT_TIMEOUT_MS);
+    // Keep this installed after ready too: an inference exception otherwise
+    // leaves the latest-wins gate permanently busy with no way to recover.
+    worker.onerror = fail;
     worker.onmessage = (ev) => {
       const msg = ev.data;
       if (msg.type === "result") {
@@ -115,10 +149,9 @@ export function createWorkerTracker() {
         last = { obs: msg.obs, ts: msg.ts };
       } else if (msg.type === "ready") {
         clearTimeout(timer);
-        worker.onerror = null;
+        ready = true;
         resolve(api);
-      } else if (msg.type === "fail") {
-        clearTimeout(timer);
+      } else if (msg.type === "fail" || msg.type === "error") {
         fail();
       }
     };
@@ -137,6 +170,7 @@ const MOUTH = [61, 291, 13, 14, 0, 17];
 export async function detectOnImage(canvas) {
   let landmarker = null;
   try {
+    const { FaceLandmarker, FilesetResolver } = await loadTasksVision();
     const vision = await FilesetResolver.forVisionTasks(WASM_BASE);
     landmarker = await FaceLandmarker.createFromOptions(vision, {
       baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },

@@ -51,12 +51,9 @@ if [ -x "$PY" ]; then
 else
   uv venv --python 3.12 "$VENV"
 fi
-# python deps (mediapipe import is the proxy for the whole set)
-if "$PY" -c "import mediapipe, cv2, numpy, yaml, scipy" 2>/dev/null; then
-  echo "  fallback deps already importable — skipping install"
-else
-  uv pip install --python "$PY" mediapipe opencv-python numpy pyyaml pillow pytest scipy
-fi
+# Python deps — install is idempotent and corrects pinned packages without
+# deleting optional developer tooling already present in a reused venv.
+uv pip install --python "$PY" --requirement "$ROOT/requirements.txt"
 # face landmarker model
 if [ -f "$MPMODEL" ]; then
   echo "  face_landmarker.task already present — skipping download"

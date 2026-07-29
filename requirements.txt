@@ -1,0 +1,11 @@
+# Desktop fallback and test environment. Keep these pinned so a clean setup
+# reproduces the MediaPipe/OpenCV/Numpy combination validated by this project.
+mediapipe==0.10.35
+# MediaPipe depends on the contrib distribution; declaring the same wheel here
+# avoids installing overlapping `opencv-python` and `opencv-contrib-python` wheels.
+opencv-contrib-python==5.0.0.93
+numpy==2.5.1
+PyYAML==6.0.3
+Pillow==12.3.0
+pytest==9.1.1
+scipy==1.18.0

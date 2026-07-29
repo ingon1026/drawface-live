@@ -68,7 +68,7 @@ def inpaint_region(img: Image.Image, box: tuple[int, int, int, int], ring: int =
 def _ink_color(img: Image.Image, box: tuple[int, int, int, int]) -> str:
     """Median color of dark (ink) pixels inside box; falls back to near-black."""
     crop = img.crop(box)
-    dark = [p for p in crop.getdata() if sum(p[:3]) < 300]
+    dark = [p for p in crop.get_flattened_data() if sum(p[:3]) < 300]
     if not dark:
         return "#1a1a1a"
     r, g, b = (int(statistics.median(c[i] for c in dark)) for i in range(3))

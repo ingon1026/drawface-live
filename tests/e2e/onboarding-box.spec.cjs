@@ -33,6 +33,53 @@ async function redMouthBox(page) {
   });
 }
 
+async function redBoxEdges(page) {
+  return page.locator("#onboardCanvas").evaluate((canvas) => {
+    const { data, width, height } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+    const redAt = (x, y) => {
+      const i = (y * width + x) * 4;
+      return data[i] > 200 && data[i + 1] < 110 && data[i + 2] < 110;
+    };
+    const vertical = [];
+    for (let x = 0; x < width; x++) {
+      let start = -1;
+      for (let y = 0; y < height; y++) {
+        const red = redAt(x, y);
+        if (red && start < 0) start = y;
+        if ((!red || y === height - 1) && start >= 0) {
+          const end = red && y === height - 1 ? y : y - 1;
+          if (end - start >= 30) vertical.push({ x, top: start, bottom: end });
+          start = -1;
+        }
+      }
+    }
+    if (!vertical.length) return null;
+    return {
+      left: Math.min(...vertical.map((line) => line.x)),
+      right: Math.max(...vertical.map((line) => line.x)),
+      top: Math.min(...vertical.map((line) => line.top)),
+      bottom: Math.max(...vertical.map((line) => line.bottom)),
+    };
+  });
+}
+
+async function redPixelBounds(page) {
+  return page.locator("#onboardCanvas").evaluate((canvas) => {
+    const { data, width, height } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+    let left = width, top = height, right = -1, bottom = -1;
+    for (let y = 260; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (data[i] > 200 && data[i + 1] < 110 && data[i + 2] < 110) {
+          left = Math.min(left, x); top = Math.min(top, y);
+          right = Math.max(right, x); bottom = Math.max(bottom, y);
+        }
+      }
+    }
+    return right >= left ? { left, top, right, bottom } : null;
+  });
+}
+
 async function openManualOnboarding(page) {
   await page.route(/https:\/\/(cdn\.jsdelivr\.net|storage\.googleapis\.com)\//, (route) => route.abort());
   await page.goto("/draw.html");
@@ -57,6 +104,15 @@ async function openManualOnboarding(page) {
 
 function expectNear(actual, expected, tolerance = 3) {
   expect(Math.abs(actual - expected)).toBeLessThanOrEqual(tolerance);
+}
+
+async function mouseDrag(page, canvas, from, to) {
+  const start = pagePoint(canvas, from);
+  const end = pagePoint(canvas, to);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y);
+  await page.mouse.up();
 }
 
 test("mouth box resizes from a corner and moves from its interior", async ({ page }) => {
@@ -90,6 +146,70 @@ test("mouth box resizes from a corner and moves from its interior", async ({ pag
   expectNear(moved.top - resized.top, 20);
   expectNear(moved.right - resized.right, 32);
   expectNear(moved.bottom - resized.bottom, 20);
+});
+
+const CORNER_CASES = [
+  {
+    name: "top-left", from: (b) => ({ x: b.left - 4, y: b.top }),
+    to: (b) => ({ x: b.left - 28, y: b.top - 18 }),
+    check: (before, after) => {
+      expect(after.left).toBeLessThan(before.left - 16);
+      expect(after.top).toBeLessThan(before.top - 12);
+      expectNear(after.right, before.right); expectNear(after.bottom, before.bottom);
+    },
+  },
+  {
+    name: "top-right", from: (b) => ({ x: b.right + 4, y: b.top }),
+    to: (b) => ({ x: b.right + 28, y: b.top - 18 }),
+    check: (before, after) => {
+      expectNear(after.left, before.left); expect(after.top).toBeLessThan(before.top - 12);
+      expect(after.right).toBeGreaterThan(before.right + 16); expectNear(after.bottom, before.bottom);
+    },
+  },
+  {
+    name: "bottom-left", from: (b) => ({ x: b.left - 4, y: b.bottom + 4 }),
+    to: (b) => ({ x: b.left - 28, y: b.bottom + 22 }),
+    check: (before, after) => {
+      expect(after.left).toBeLessThan(before.left - 16); expectNear(after.top, before.top);
+      expectNear(after.right, before.right); expect(after.bottom).toBeGreaterThan(before.bottom + 14);
+    },
+  },
+];
+
+for (const corner of CORNER_CASES) {
+  test(`mouse drag resizes the ${corner.name} corner`, async ({ page }) => {
+    const canvas = await openManualOnboarding(page);
+    const initial = await redMouthBox(page);
+    await mouseDrag(page, canvas, corner.from(initial), corner.to(initial));
+    corner.check(initial, await redMouthBox(page));
+  });
+}
+
+test("mouth box enforces its minimum size", async ({ page }) => {
+  const canvas = await openManualOnboarding(page);
+  const initial = await redMouthBox(page);
+  await mouseDrag(page, canvas,
+    { x: initial.right + 4, y: initial.bottom + 4 },
+    { x: initial.left - 4, y: initial.top });
+  // A 12px box plus its 4px handles is at least 20px wide/high in red pixels.
+  const minimum = await redPixelBounds(page);
+  expect(minimum.right - minimum.left).toBeGreaterThanOrEqual(19);
+  expect(minimum.bottom - minimum.top).toBeGreaterThanOrEqual(19);
+});
+
+test("mouth box stays within canvas boundaries", async ({ page }) => {
+  const canvas = await openManualOnboarding(page);
+  const initial = await redMouthBox(page);
+  await mouseDrag(page, canvas,
+    { x: initial.left - 4, y: initial.top }, { x: -100, y: -100 });
+  const atTopLeft = await redBoxEdges(page);
+  expect(atTopLeft.left).toBeLessThanOrEqual(4);
+  expect(atTopLeft.top).toBeLessThanOrEqual(4);
+  await mouseDrag(page, canvas,
+    { x: atTopLeft.right + 4, y: atTopLeft.bottom + 4 }, { x: 700, y: 700 });
+  const atBottomRight = await redBoxEdges(page);
+  expect(atBottomRight.right).toBeGreaterThanOrEqual(507);
+  expect(atBottomRight.bottom).toBeGreaterThanOrEqual(507);
 });
 
 test("touch drag resizes the mouth box", async ({ browser }) => {

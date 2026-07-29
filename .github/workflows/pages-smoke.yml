@@ -29,7 +29,7 @@ jobs:
       - name: Read deployed asset version
         id: asset-version
         run: |
-          version="$(sed -n 's/.*js\\/main\\.js?v=\\([^\"]*\\).*/\\1/p' docs/draw.html)"
+          version="$(sed -n 's#.*js/main\.js?v=\([^\"]*\).*#\1#p' docs/draw.html)"
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Install browser test dependencies

@@ -149,11 +149,33 @@ flowchart LR
 
 ![FLP 명화 실측](docs/img/flp_painting_ok.png)
 
-업스트림에 그대로는 안 되고 카툰 퍼펫팅용 패치 3개가 필요합니다 — ① 실시간 경로 eye
+업스트림에 그대로는 안 되고 카툰 퍼펫팅용 수정 3개가 필요합니다 — ① 실시간 경로 eye
 retargeting 크래시 수정 ② eye retargeting 시 드라이빙 모션(입·고개)이 버려지는 설계를
 모션 위 델타 가산으로 변경 ③ 고개 회전 축각 클램프(카툰은 큰 회전 정보가 없어 뭉개짐).
-GPU 필수라 웹 데모에는 못 올라가며, 로컬 실행(원커맨드 `live.sh`)·도커 셋업·패치 상세는
-별도 로컬 클론에 정리돼 있습니다. 웹 통합(로컬 서버 + 브라우저 스트림)은 설계 완료, 미착수.
+이 패치는 리포 안([`vendor_patches/faster-live-portrait/`](vendor_patches/faster-live-portrait),
+실행기 `live.sh`·문서까지 4개)에 있어 클론만으로 재현됩니다:
+
+```bash
+bash scripts/setup.sh                        # 서브모듈 + 도커 이미지 + ONNX 체크포인트
+./scripts/apply_vendor_patches.sh            # 벤더 패치 적용 (재실행 안전, --check 는 확인만)
+# → TensorRT 엔진 빌드 (최초 1회, 아래 참고)
+cd third_party/FasterLivePortrait && ./live.sh <내_일러스트.png>
+```
+
+**엔진 빌드가 별도 단계인 이유**: TensorRT 엔진 9개를 컨테이너 안에서 직접 빌드해야 합니다
+(`.trt` 는 TRT 8.6.1.6 + 특정 GPU 에 묶여 있어 다른 장비에서 복사해 와도 안 됩니다). 핵심은
+`export LD_LIBRARY_PATH=/opt/TensorRT-8.6.1.6/lib` 인데 업스트림 문서에도 `README_LOCAL.md` 에도
+없습니다 — 절차는 [`THIRD_PARTY.md`](THIRD_PARTY.md)에 적어 뒀고, **`live.sh` 에서 읽어 재구성한
+것이라 끝까지 실행 검증된 절차는 아닙니다.** 체크포인트 마운트 주의사항도 같은 곳에 있습니다.
+
+`live.sh` 는 WSL + usbipd·`/dev/video4` 전제이고, 저자의 테스트 이미지·영상(9개, 약 4.7MB)은 용량과
+개인 녹화 가능성 때문에 리포에 없으니 그림 경로를 직접 넘기세요. 무인자 실행은 기본값이
+`assets/test/girl.jpg` 라 실패합니다.
+
+**붙일 그림을 고르는 기준은 위 표 그대로**입니다: 표준 비율 일러스트·명화·유화만 되고,
+손그림·낙서·치비는 얼굴 검출 실패나 스미어링이라 이 트랙에 붙이면 안 됩니다 — 그쪽은 아래
+"ARAP 워프 모드"가 정답입니다. GPU 필수라 웹 데모에는 못 올라갑니다.
+웹 통합(로컬 서버 + 브라우저 스트림)은 설계 완료, 미착수.
 
 ## ARAP 워프 모드 (차세대 엔진)
 

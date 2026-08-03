@@ -33,14 +33,118 @@ gets from `scipy.spatial.Delaunay`.
 | Upstream URL | https://github.com/warmshao/FasterLivePortrait |
 | Pinned commit | `8aad3602177547aaa5e4beec0c3ef5b7944e7a1f` |
 | Commit date | 2025-06-29 15:36:41 +0800 (merge of PR #182, `kokoro`) |
-| Integration | Git submodule at `third_party/FasterLivePortrait`, **unmodified** |
+| Integration | Git submodule at `third_party/FasterLivePortrait`; unmodified in git, local patches applied to the working tree for the illustration track |
+| Local patches | `vendor_patches/faster-live-portrait/*.patch` (`git format-patch` output, text only) |
+| Apply | `./scripts/apply_vendor_patches.sh` — idempotent; `--check` verifies without applying |
 | License | MIT License, Copyright (c) 2025 warmshao (`third_party/FasterLivePortrait/LICENSE`) |
 
 The submodule is checked out at the exact pinned SHA (`git -C third_party/FasterLivePortrait rev-parse HEAD`
 returns the SHA above). It is registered in `.gitmodules` with `ignore = untracked` because upstream `run.py`
 writes a `results/` directory inside its own tree at runtime; that directory must not appear as submodule dirt.
 
-We do not modify upstream files. All integration and patches live in our own wrapper code (`app/`).
+The sprite and ARAP warp tracks use no upstream code at all — their integration lives entirely in
+our own wrapper (`app/`). The illustration track is the one exception, below.
+
+### Local patches — illustration track only
+
+Real-time webcam puppeting of standard-proportion illustrations and paintings (TensorRT,
+27–37 ms/frame on an RTX 4070 Ti) needs four changes that do not exist upstream. They are kept as
+`git format-patch` files under `vendor_patches/faster-live-portrait/`, not as a fork:
+
+| Patch | Touches | What it does |
+| --- | --- | --- |
+| `0001-local` | `src/pipelines/faster_live_portrait_pipeline.py`, `scripts/all_onnx2trt.sh`, adds `configs/trt_infer_eyes.yaml` | realtime eye-retargeting crash fix; driving motion (mouth, head) preserved under eye retargeting by adding the delta on top of the motion instead of replacing it; head-rotation axis-angle clamp (`max_head_rot_deg`) so cartoons do not smear; absolute python path in the human TRT build script |
+| `0002-local` | adds `live.sh`, `README_LOCAL.md` | one-command runner (camera attach, out-of-tree source image copy) plus local run and tuning notes |
+| `0003-local` | `README_LOCAL.md` | measured which-artwork-works examples (text only — the images it references are excluded, see below) |
+| `0004-local` | `scripts/all_onnx2trt_animal.sh` | same absolute python path for the animal TRT build script, which `0001` left behind: the docker image has no `python` on `PATH`, only `/root/miniconda3/bin/python` |
+
+`0001` carries a `base-commit: 8aad3602177547aaa5e4beec0c3ef5b7944e7a1f` trailer, so the series
+records its own target. `apply_vendor_patches.sh` independently reads the gitlink SHA the parent
+repo has recorded, and refuses to run if the submodule sits anywhere else.
+
+```bash
+./scripts/apply_vendor_patches.sh          # apply; re-running is a no-op
+./scripts/apply_vendor_patches.sh --check  # verify they still apply, exit 1 if not
+```
+
+To restore the patched tree **outside** this repo — a standalone clone rather than the submodule —
+use `git am` instead (verified independently by two people: 4 patches apply cleanly and the result
+is byte-identical to the original working tree, text files):
+
+```bash
+git clone https://github.com/warmshao/FasterLivePortrait
+cd FasterLivePortrait && git checkout 8aad360
+git am <이 리포>/vendor_patches/faster-live-portrait/00*.patch
+```
+
+The script uses `git apply`, not `git am`, so the submodule HEAD stays at the pinned SHA and the
+gitlink the parent repo records never moves. The changes live in the submodule working tree, so
+after applying, the parent reports `third_party/FasterLivePortrait (modified content)` — expected,
+not dirt to clean up. `ignore = untracked` hides the files the patches *add* but not the ones they
+*modify*. To revert: `git -C third_party/FasterLivePortrait checkout -- .` and delete the three
+added files (`live.sh`, `README_LOCAL.md`, `configs/trt_infer_eyes.yaml`).
+
+`--check` in CI would need `actions/checkout@v4` with `submodules: true`; no workflow runs it today.
+
+One caveat when running the patched `live.sh` from inside the submodule: it mounts only its own
+tree (`-v "$PWD:/root/FLP"`), and `third_party/FasterLivePortrait/checkpoints/` here is an empty
+placeholder (upstream `.gitignore:5` ignores it) — the 2.9 GB of weights live at the repo root, one
+level up and outside that mount. Add a second bind mount for them, the way `scripts/lib.sh`'s
+`flp_run` already does for the ONNX path, or the container starts with no weights. (The empty
+directory is verified; the added mount is not.)
+
+#### TensorRT engines must be rebuilt locally (procedure reconstructed, NOT verified end to end)
+
+The patched track runs on TensorRT: `trt_infer_eyes.yaml` points at nine
+`checkpoints/liveportrait_onnx/*.trt` engines that are **not** in `checkpoints/` and cannot be
+copied from another machine — they are built against TensorRT 8.6.1.6 for a specific GPU (here an
+RTX 4070 Ti) and will not load elsewhere. Writing the procedure down is the only way to preserve it.
+
+> **Status: reconstructed by reading `live.sh`, not executed end to end.** The `LD_LIBRARY_PATH`
+> line below comes from `live.sh`'s `run.py` invocation, not from a conversion run anyone has
+> completed. Treat step ③ as the best available reconstruction and correct it once someone runs it.
+
+```bash
+# ① runtime image
+docker pull shaoguo/faster_liveportrait:v3
+# ② ONNX weights — skip if scripts/setup.sh already populated checkpoints/
+#    (includes libgrid_sample_3d_plugin.so, so the TRT plugin needs no separate build)
+uvx --from 'huggingface_hub[cli]' huggingface-cli download \
+  warmshao/FasterLivePortrait --local-dir checkpoints
+# ③ convert ONNX → TRT inside the container
+docker run --rm --gpus=all -v "$PWD/third_party/FasterLivePortrait:/root/FLP" \
+  -v "$PWD/checkpoints:/root/FLP/checkpoints" -w /root/FLP \
+  shaoguo/faster_liveportrait:v3 \
+  bash -c "export LD_LIBRARY_PATH=/opt/TensorRT-8.6.1.6/lib:\$LD_LIBRARY_PATH; \
+    sh scripts/all_onnx2trt.sh"
+```
+
+That builds the nine human engines, which is all the illustration track uses. For animal mode, run
+`sh scripts/all_onnx2trt_animal.sh` the same way (six more engines) — otherwise skip it.
+
+`export LD_LIBRARY_PATH=/opt/TensorRT-8.6.1.6/lib` is the piece that exists nowhere else in writing:
+upstream `README.md` says only "run `sh scripts/all_onnx2trt.sh`", and `README_LOCAL.md` does not
+mention the TRT build at all. Without it the conversion fails inside the container. The two
+conversion scripts must also have the patches applied first (`0001`, `0004`) — they call
+`/root/miniconda3/bin/python` because the image has no `python` on `PATH`. (`onnx2trt.py` itself
+imports only stdlib, `tensorrt` and `numpy`, so the extra `pip install` inside `live.sh` is for
+`run.py`, not for the conversion.)
+
+#### Binary test assets are excluded
+
+The patch series is text only. Nine binary files (~4.7 MB combined) that the patch author had in
+their tree were deliberately left out — partly for size, and partly because `drive.mp4` is an 8.8 s
+recording with audio whose provenance cannot be confirmed, and this repo's `CLAUDE.md` forbids
+committing webcam recordings. Paths are inside the submodule tree
+(`third_party/FasterLivePortrait/…`), which is where `live.sh` resolves them:
+
+| Missing | Files | Impact |
+| --- | --- | --- |
+| `assets/test/` | `boy.png`, `girl.jpg`, `pig.png`, `drive.mp4` (3.4 MB) | **breaks commands.** Not an upstream directory — upstream examples live in `assets/examples/` and are unaffected. These are the patch author's own inputs, and `live.sh` defaults to `assets/test/girl.jpg`, so `./live.sh` with no argument fails. Pass your own image (`./live.sh ~/my_illustration.png`); the script copies out-of-tree paths in for you. Same for a driving clip. |
+| `docs_local/` | `fail_boy.png`, `fail_pig.png`, `ok_girl.png`, `ok_oil.png`, `ok_pearl.png` | **documentation only.** The five image references in `README_LOCAL.md` render as broken links. Nothing at runtime depends on them. The text was left untouched on purpose — editing it would break the byte-for-byte match with the author's tree. |
+
+The author's before/after comparison therefore cannot be re-run as-is. Reproduce it with your own
+standard-proportion illustration and a live webcam.
 
 ## Runtime Docker image
 
@@ -60,14 +164,14 @@ ONNX is the only usable GPU backend from this image.
 
 Built by `scripts/setup.sh` from `docker/Dockerfile`: upstream image + `libsm6 libxext6 libxrender1`
 (OpenCV's Qt xcb plugin needs them for `cv2.imshow` under WSLg) + conda python on PATH.
-Upstream files remain unmodified.
+The image build itself does not touch upstream files.
 
 ## Model weights (checkpoints)
 
 | Field | Value |
 | --- | --- |
 | Source | https://huggingface.co/warmshao/FasterLivePortrait |
-| Download | `hf download warmshao/FasterLivePortrait --local-dir checkpoints` |
+| Download | `uvx --from 'huggingface_hub[cli]' huggingface-cli download warmshao/FasterLivePortrait --local-dir checkpoints` (same as `scripts/setup.sh`) |
 | Size | ~2.9 GB, 31 files |
 
 `checkpoints/` lives **outside** the submodule (at the repo root) and is **bind-mounted** over

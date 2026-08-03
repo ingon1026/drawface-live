@@ -1,10 +1,21 @@
+<div align="center">
+
 # DrawFace Live
 
 **웹캠 표정을 캐릭터가 실시간으로 따라 합니다 — 전부 브라우저 안에서, 서버·설치·전송 없음.**
-석고상 남/여(3D)와 소년/소녀 그래픽(2D)은 들어가자마자 시연되고, 내 손그림 한 장도 4클릭이면 캐릭터가 됩니다.
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Hugging_Face_Space-16161d?style=for-the-badge)](https://ingon1-drawface-live.static.hf.space/)
-[![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
+*Track with MediaPipe. Render with three.js and canvas warp. Everything stays in the browser.*
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Hugging_Face-FFD21E?logo=huggingface&logoColor=black)](https://ingon1-drawface-live.static.hf.space/)
+[![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-4285F4?logo=google&logoColor=white)](https://ai.google.dev/edge/mediapipe)
+[![three.js](https://img.shields.io/badge/three.js-r160-000000?logo=threedotjs&logoColor=white)](https://threejs.org)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](#데스크톱-버전-python--wsl2linux)
+[![TensorRT](https://img.shields.io/badge/TensorRT-8.6-76B900?logo=nvidia&logoColor=white)](#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측)
+[![Platform](https://img.shields.io/badge/Platform-Browser_%7C_WSL2-E95420?logo=ubuntu&logoColor=white)](#데스크톱-버전-python--wsl2linux)
+
+</div>
+
+석고상 남/여(3D)와 소년/소녀 그래픽(2D)은 들어가자마자 시연되고, 내 손그림 한 장도 4클릭이면 캐릭터가 됩니다.
 
 ![내 표정 하나로 석고상 남/여 + 소년/소녀가 동시에 움직이는 실시간 미러링](docs/img/studio_5.gif)
 

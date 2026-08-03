@@ -1,34 +1,39 @@
-# 🪞 DrawFace Live
+# DrawFace Live
 
 **웹캠 표정을 캐릭터가 실시간으로 따라 합니다 — 전부 브라우저 안에서, 서버·설치·전송 없음.**
 석고상 남/여(3D)와 소년/소녀 그래픽(2D)은 들어가자마자 시연되고, 내 손그림 한 장도 4클릭이면 캐릭터가 됩니다.
 
-[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-ingon1026.github.io-2ea44f?style=for-the-badge)](https://ingon1026.github.io/drawface-live/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Hugging_Face_Space-16161d?style=for-the-badge)](https://ingon1-drawface-live.static.hf.space/)
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Face_Landmarker-blue)](https://ai.google.dev/edge/mediapipe)
 
 ![내 표정 하나로 석고상 남/여 + 소년/소녀가 동시에 움직이는 실시간 미러링](docs/img/studio_5.gif)
 
 <sub>**웹캠 표정 하나로 다섯 화면이 동시에 구동됩니다** — 왼쪽은 내 얼굴에 MediaPipe 478점 랜드마크
 (홍채는 주황), 가운데는 석고상 남/여(NVIDIA mark·claire, 3D 모프타깃), 오른쪽은 소년/소녀(2D 벡터 입).
-입을 벌리면 넷이 같이 벌리고, 눈동자를 굴리면 같이 따라옵니다. <a href="https://ingon1026.github.io/drawface-live/combo.html">combo.html</a>
-에서 🪞 미러링 → ⏺ 5칸 녹화로 이 영상을 그대로 뽑을 수 있습니다.
+입을 벌리면 넷이 같이 벌리고, 눈동자를 굴리면 같이 따라옵니다.
+<a href="https://ingon1-drawface-live.static.hf.space/combo.html">combo.html</a>에서
+<b>Start mirroring</b> → <b>Record all five</b>로 이 영상을 그대로 뽑을 수 있습니다.
 (자동 쇼케이스 버전: <a href="docs/img/studio_sync.gif">studio_sync.gif</a>)</sub>
 
-## ▶ 바로 체험 — https://ingon1026.github.io/drawface-live/
+## 바로 체험 — https://ingon1-drawface-live.static.hf.space/
 
 | 입구 | 캐릭터 | 엔진 |
 | --- | --- | --- |
-| **메인** (미러링 스튜디오) | 🗿 석고상 남/여 (NVIDIA mark·claire · 3D) · 🎨 소년/소녀 (그래픽 · 2D) | MediaPipe 표정 채널 → 3D 모프타깃 / 2D 벡터 입·워프 |
-| [draw.html](https://ingon1026.github.io/drawface-live/draw.html) | ✏️ **내 손그림** (드래그앤드롭 + 4클릭) | 결정론 워프 — 화풍 100% 보존 |
-| 로컬 GPU ([아래](#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측)) | 🖼 초상화·표준 비율 일러스트 | LivePortrait TensorRT ≈30fps |
+| **메인** (미러링 스튜디오) | 석고상 남/여 (NVIDIA mark·claire · 3D) · 소년/소녀 (그래픽 · 2D) | MediaPipe 표정 채널 → 3D 모프타깃 / 2D 벡터 입·워프 |
+| [draw.html](https://ingon1-drawface-live.static.hf.space/draw.html) | **내 손그림** (드래그앤드롭 + 4클릭) | 결정론 워프 — 화풍 100% 보존 |
+| [illust.html](https://ingon1-drawface-live.static.hf.space/illust.html) | 초상화·표준 비율 일러스트 (미리 렌더한 결과) | LivePortrait TensorRT ≈30fps — 로컬 GPU 전용, [아래](#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측) |
 
-1. **🪞 미러링 시작** → 카메라 허용 → 정면·무표정으로 1초 캘리브레이션
+1. **Start mirroring** → 카메라 허용 → 정면·무표정으로 1초 캘리브레이션
 2. 캐릭터가 입 모양·미소·눈썹·깜빡임·**눈동자(시선)** 를 따라 합니다 — 드롭다운으로 석고상 남/여·소년/소녀 전환
-3. **📊 분석** — 캐릭터 옆에 내 얼굴 + 랜드마크 478점(홍채 강조) + 실제 구동 채널값이 비교군으로 표시
-4. **🎬 5인 동시** ([combo.html](https://ingon1026.github.io/drawface-live/combo.html)) — 내 표정 하나로 네 캐릭터를 한 화면에서 동시에 구동·녹화
-5. **📺 방송·회의에 쓰기** — `?clean=1` 로 배경 투명 · OBS 브라우저 소스 ([아래](#-obs--방송회의에-쓰기-클린-모드))
+3. **Analysis** — 캐릭터 옆에 내 얼굴 + 얼굴 메시(홍채 강조) + 표정 오각형이 비교군으로 표시
+4. **Five at once** ([combo.html](https://ingon1-drawface-live.static.hf.space/combo.html)) — 내 표정 하나로 네 캐릭터를 한 화면에서 동시에 구동·녹화
+5. **방송·회의에 쓰기** — `?clean=1` 로 배경 투명 · OBS 브라우저 소스 ([아래](#obs--방송회의에-쓰기-클린-모드))
 
-## 📺 OBS / 방송·회의에 쓰기 (클린 모드)
+> 웹 UI 는 영문입니다 — 데모가 Hugging Face Space 로 공개되면서 방문자 기준을 국제 사용자로
+> 맞췄습니다. 같은 `docs/` 가 [GitHub Pages 미러](https://ingon1026.github.io/drawface-live/)로도
+> 자동 배포되므로 기존 북마크·OBS 설정은 그대로 동작합니다.
+
+## OBS / 방송·회의에 쓰기 (클린 모드)
 
 주소에 **`?clean=1`** 을 붙이면 UI 가 전부 사라지고 **배경이 투명해져** 캐릭터만 남습니다.
 OBS 의 **브라우저 소스**로 넣으면 게임 화면·발표 자료 위에 아바타가 얹히고,
@@ -38,7 +43,7 @@ OBS 의 **브라우저 소스**로 넣으면 게임 화면·발표 자료 위에
 2. URL 에 아래를 넣고, 너비·높이는 800×800 권장
 
 ```text
-https://ingon1026.github.io/drawface-live/?clean=1&auto=1&char=rpmA
+https://ingon1-drawface-live.static.hf.space/?clean=1&auto=1&char=rpmA
 ```
 
 | 파라미터 | 뜻 |
@@ -69,6 +74,9 @@ flowchart LR
   눈 감으면 직전 시선 유지(깜빡임 널뜀 방지)
 - **채널 표준이 핵심**: MediaPipe 채널 이름과 헤드 모프타깃 이름이 같은 ARKit 표준이라
   1:1 직결 — 렌더러(3D/2D)는 같은 채널을 소비하므로 캐릭터 전환이 드롭다운 하나
+- **트래킹 미리보기**: 채널 수치를 나열하는 대신 Live Link Face 방식대로 얼굴 위에
+  삼각 메시(MediaPipe 표준 토폴로지 2,556세그먼트)를 겹치고, 다섯 축(입·미소·오므림·눈·눈썹)의
+  움직임은 오각형 하나로 보여줍니다
 - **석고상 남/여 = NVIDIA mark·claire 헤드** © NVIDIA — [Maya-ACE](https://github.com/NVIDIA/Maya-ACE)(MIT)
   토폴로지 + [Audio2Face-3D](https://huggingface.co/nvidia)(v2.3 mark·claire) 52채널 블렌드셰이프로 조립,
   고지 포함 재배포([`LICENSE-mark`](docs/assets3d/LICENSE-mark.txt) · [`LICENSE-claire`](docs/assets3d/LICENSE-claire.txt))
@@ -85,13 +93,13 @@ flowchart LR
 | 눈썹 채널 | 눈썹 오프셋 |
 | 얼굴 소실 | 표정 유지 후 중립으로 자연 복귀 |
 
-## 내 손그림 캐릭터 만들기 ([draw.html](https://ingon1026.github.io/drawface-live/draw.html))
+## 내 손그림 캐릭터 만들기 ([draw.html](https://ingon1-drawface-live.static.hf.space/draw.html))
 
 1. 그림 파일 **드래그앤드롭** — 얼굴 자동 인식이 눈·입 위치를 찾아줍니다 (실패 시 4번 클릭)
 2. 저장 전에 기본·눈 감기·미소·입 벌리기 미리보기로 위치 재조정
-3. **시작** → 표정이 그림에 실시간 반영 · **녹화**를 누르면 결과 캔버스만 WebM 저장
+3. **Start** → 표정이 그림에 실시간 반영 · **Start recording**을 누르면 결과 캔버스만 WebM 저장
 
-그림이 없으면 **예시 캐릭터로 체험**으로 바로. 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
+그림이 없으면 **Try the example character**로 바로. 캐릭터는 내 브라우저(localStorage)에만 저장됩니다.
 
 ![손그림 데모 — 표정을 따라 하는 돼지](docs/img/demo.gif)
 
@@ -116,10 +124,10 @@ flowchart LR
 
 | 소스 | FLP 얼굴 검출 | 결과 |
 | --- | --- | --- |
-| 실사 얼굴 사진 | ✅ | 자연스럽게 워핑 (FLP의 강점) |
-| **표준 비율 일러스트·명화** | ✅ | **입·눈·고개 추종 + 화풍 보존** — 아래 "일러스트 트랙" (2026-07-23 재실측) |
-| 손그림(돼지) | ❌ human 실패 → animal만 | 머리 전체 워핑·뭉개짐 + paste-back 사각 자국 |
-| **플랫 디지털 아바타·치비** | **❌ human 실패** (손그림과 동일) | animal로 구동되나 얼굴 변형 |
+| 실사 얼굴 사진 | 성공 | 자연스럽게 워핑 (FLP의 강점) |
+| **표준 비율 일러스트·명화** | 성공 | **입·눈·고개 추종 + 화풍 보존** — 아래 "일러스트 트랙" (2026-07-23 재실측) |
+| 손그림(돼지) | human 실패 → animal만 | 머리 전체 워핑·뭉개짐 + paste-back 사각 자국 |
+| **플랫 디지털 아바타·치비** | **human 실패** (손그림과 동일) | animal로 구동되나 얼굴 변형 |
 
 같은 그림 + 같은 표정 클립 비교 (`scripts/sprite_video.py`로 재현):
 
@@ -140,6 +148,7 @@ flowchart LR
 7/10 실측은 손그림 기준이었고, **표준 비율 일러스트에서 human 모드를 재실측한 결과 판정이
 뒤집혔습니다**: TensorRT 27~37 ms/frame(≈30fps, RTX 4070 Ti)로 실시간 웹캠 퍼펫팅이 되고,
 벌린 입 원본도 자연스럽게 다물며 화풍이 보존됩니다.
+미리 렌더한 결과와 실패 사례 대조는 웹의 [illust.html](https://ingon1-drawface-live.static.hf.space/illust.html) 에서 볼 수 있습니다.
 
 웹캠 드라이빙 실측 프레임 — 일러스트(벌린 입 원본):
 
@@ -189,7 +198,7 @@ GPU 필수라 웹 데모에는 못 올라갑니다. 웹 통합(로컬 서버 + �
 | 표정 | 이산 상태 (open/half/closed, 비즈메) | 연속 채널 (blink L/R · smile · jaw, 0~1) |
 | 강점 | 완전 감김·입 안쪽까지 명확한 상태 표현 | 붙인 티 0, 부드러운 중간 표정 |
 | 완전 감김·입 내부 | 스프라이트 교체 | **하이브리드 레이어** — 워프된 메시를 따라가는 폴리곤에 그림에서 샘플한 색으로 그림 (박스 아님 → 붙인 티 없음) |
-| 지원 | 웹 + 데스크톱 | **웹(기본 엔진) + 데스크톱** — 웹은 `워프 엔진` 토글로 스프라이트 폴백 가능 |
+| 지원 | 웹 + 데스크톱 | **웹(기본 엔진) + 데스크톱** — 웹은 `Warp engine` 토글로 스프라이트 폴백 가능 |
 
 두 입력 루트가 같은 엔진으로 수렴합니다:
 
@@ -237,7 +246,7 @@ bash scripts/setup.sh                          # venv + 모델 + 스프라이트
 PYTHONPATH= .venv/bin/python -m app.ui         # 컨트롤 패널 — 스프라이트 모드 (캐릭터·카메라 선택)
 PYTHONPATH= .venv/bin/python -m app.onboard <그림> <이름>   # 4클릭 온보딩 도구
 
-# ARAP 워프 모드 (아래 "ARAP 워프 모드" 참고)
+# ARAP 워프 모드 (위 "ARAP 워프 모드" 참고)
 PYTHONPATH= .venv/bin/python -m app.warp_live --image <그림.png>            # 얼굴 검출되는 그림
 PYTHONPATH= .venv/bin/python -m app.warp_live --character assets/sprites/<이름>  # 4클릭 낙서 캐릭터
 
@@ -245,11 +254,6 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH= .venv/bin/python -m pytest tests/  
 ```
 
 Python 의존성은 [`requirements.txt`](requirements.txt)에 검증된 버전으로 고정돼 있습니다.
-
-웹 정적 파일은 [`docs/draw.html`](docs/draw.html)의 자산 버전으로 캐시를 구분합니다. 웹 JS/CSS를
-배포할 때는 `scripts/bump_web_asset_version.sh <버전>`을 실행해 모듈 그래프 전체의 버전을 함께
-올리세요. GitHub Actions는 Python 테스트·JS 문법·자산 버전 일관성을 매 푸시마다 검사합니다.
-입 박스의 모서리 리사이즈·내부 이동과 터치 드래그는 `npm run test:e2e`로 실제 Chromium에서 검사합니다.
 
 > ROS 등 전역 pytest 플러그인이 설치된 환경에서도 프로젝트 테스트만 실행하도록
 > `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`을 붙입니다.
@@ -273,22 +277,41 @@ usbipd attach --wsl --busid 2-1    # 그 순간 WSL 에 /dev/video0~5 생성
 - 노드 판별(D455): **video4 = 깨끗한 RGB**(`configs/app.yaml`의 `index: 4`), video2 는 IR 도트 혼입, video0 은 depth
 - 최초 1회만: `usbipd bind --busid 2-1` (Shared 로 만들기). 이후 재부팅엔 attach 만 다시
 
+## 배포와 CI
+
+`docs/` 하나가 두 곳으로 자동 배포됩니다 — **손으로 복사하는 단계가 없어 두 배포처가 어긋날 수 없습니다**:
+
+| 대상 | 주소 | 배포 |
+| --- | --- | --- |
+| Hugging Face Space (대표) | https://ingon1-drawface-live.static.hf.space/ | `.github/workflows/hf-space.yml` — 업로드 후 실제 URL 이 200 인지까지 확인 |
+| GitHub Pages (미러) | https://ingon1026.github.io/drawface-live/ | Pages 기본 배포 + 배포된 실물을 검사하는 스모크 테스트 |
+
+매 푸시마다 도는 검사: Python 테스트 · JS 문법 · 자산 버전 일관성 · 벤더 패치 적용 가능 여부
+(`apply_vendor_patches.sh --check`) · 온보딩 E2E(`npm run test:e2e`, 실제 Chromium).
+공용 렌더 코어 [`docs/avatar_core.js`](docs/avatar_core.js) 는
+[talking-drawing-avatar](https://github.com/ingon1026/talking-drawing-avatar) 의 벤더 사본이라
+전용 워크플로가 푸시마다 + 매일 원본과 대조합니다 (`scripts/sync_avatar_core.sh --check`).
+웹 JS/CSS를 배포할 때는 `scripts/bump_web_asset_version.sh <버전>` 으로 캐시 버전을 함께 올립니다.
+
 ## 프라이버시
 
 - 웹캠 영상은 **어디로도 전송·저장되지 않습니다** (웹: 브라우저 내 처리, 데스크톱: 로컬 처리)
-- **녹화(웹, 선택 기능)**: 기본 꺼짐. `녹화 시작`을 눌렀을 때만, 그리고 **웹캠 화면이 아니라 캐릭터 결과 캔버스만** WebM으로 저장(내 기기로 직접 다운로드). 녹화 중에는 버튼이 `녹화 종료`로 바뀌어 상태가 드러납니다
+- **녹화(웹, 선택 기능)**: 기본 꺼짐. `Record`/`Start recording`을 눌렀을 때만, 그리고 **웹캠
+  화면이 아니라 캐릭터 결과 캔버스만** WebM으로 저장(내 기기로 직접 다운로드). 녹화 중에는
+  버튼이 `Stop recording`으로 바뀌어 상태가 드러납니다
 - 텔레메트리·분석·계정 없음
 - 추적 모델은 MediaPipe 공식 저장소에서 로드
 
 ## 구조
 
 ```text
-docs/     웹앱 (GitHub Pages 루트) — 정적 파일, 빌드 없음
-          (index.html 스튜디오 · combo.html 5인 동시 · draw.html 손그림 · avatar_core.js 공용 코어)
+docs/     웹앱 — 정적 파일, 빌드 없음. HF Space 와 GitHub Pages 가 같은 내용을 서빙
+          (index.html 스튜디오 · combo.html 5인 동시 · draw.html 손그림 · illust.html 일러스트 트랙 결과
+           · avatar_core.js 공용 코어)
 app/      데스크톱 파이프라인 (config · camera · tracker · compositor · UI · onboard · warp_rig · warp_live)
-scripts/  setup · diagnose · 스프라이트 파생 · 워프 데모 · FasterLivePortrait 실행
-tests/    시맨틱 매핑 · 상태머신 · 설정 · 온보딩 · 워프 리그 검증
-third_party/FasterLivePortrait   평가용 업스트림 (서브모듈, 무수정)
+scripts/  setup · diagnose · 스프라이트 파생 · 워프 데모 · 벤더 패치 적용/동기화 · FasterLivePortrait 실행
+tests/    시맨틱 매핑 · 상태머신 · 설정 · 온보딩 · 워프 리그 검증 (+ tests/e2e Chromium)
+third_party/FasterLivePortrait   평가·일러스트 트랙 업스트림 (서브모듈, 고정 SHA — 패치는 vendor_patches/)
 third_party/animated_drawings    ARAP 솔버 (MIT, 단일 파일 벤더링)
 ```
 

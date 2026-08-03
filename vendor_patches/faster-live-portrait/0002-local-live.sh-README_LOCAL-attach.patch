@@ -1,0 +1,126 @@
+From 9574ee9c4e811ffdb3e003a5a7fed8352b34be26 Mon Sep 17 00:00:00 2001
+From: ingon1026 <157796083+ingon1026@users.noreply.github.com>
+Date: Thu, 23 Jul 2026 15:01:00 +0900
+Subject: [PATCH 2/4] =?UTF-8?q?local:=20=EC=9B=90=EC=BB=A4=EB=A7=A8?=
+ =?UTF-8?q?=EB=93=9C=20=EC=8B=A4=ED=96=89=EA=B8=B0=20live.sh=20+=20README?=
+ =?UTF-8?q?=5FLOCAL=20=E2=80=94=20=EC=B9=B4=EB=A9=94=EB=9D=BC=20attach=20?=
+ =?UTF-8?q?=EC=9E=90=EB=8F=99=ED=99=94,=20=EC=99=B8=EB=B6=80=20=EA=B2=BD?=
+ =?UTF-8?q?=EB=A1=9C=20=EA=B7=B8=EB=A6=BC=20=EC=9E=90=EB=8F=99=20=EB=B3=B5?=
+ =?UTF-8?q?=EC=82=AC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ README_LOCAL.md | 58 +++++++++++++++++++++++++++++++++++++++++++++++++
+ live.sh         | 33 ++++++++++++++++++++++++++++
+ 2 files changed, 91 insertions(+)
+ create mode 100644 README_LOCAL.md
+ create mode 100755 live.sh
+
+diff --git a/README_LOCAL.md b/README_LOCAL.md
+new file mode 100644
+index 0000000..0ea7ecb
+--- /dev/null
++++ b/README_LOCAL.md
+@@ -0,0 +1,58 @@
++# LivePortrait 실시간 퍼펫 (로컬 셋업)
++
++일러스트 한 장이 웹캠 표정을 실시간으로 따라 합니다. drawface-live 투 트랙 중
++**일러스트 트랙**입니다 — 손그림·낙서는 이 모델이 못 받으므로 drawface-live 워프 엔진을 쓰세요.
++
++## 빠른 시작
++
++```bash
++./live.sh                      # 기본 그림(소녀)
++./live.sh 내그림.jpg            # 아무 경로나 OK (자동 복사)
++```
++
++창이 뜨면 웹캠 따라 움직입니다. **Q = 종료**. 첫 실행은 모델 로드로 20~30초.
++
++## 되는 그림 / 안 되는 그림 (실측)
++
++| | 판정 |
++|---|---|
++| 표준 비율 일러스트·실사·명화·3D 카툰 | ✅ 입·눈·고개 추종 + 화풍 보존 |
++| 손그림(돼지)·낙서(졸라맨)·치비(왕큰 머리) | ❌ 검출 실패 또는 스미어링 → drawface-live 워프 |
++| 입 벌린 원본 | ✅ 자연스럽게 다물어짐 (워프 엔진과의 결정적 차이) |
++
++## 성능 (RTX 4070 Ti, TensorRT)
++
++- 27~37 ms/frame ≈ **30fps 실시간**
++- face 서버(port 8000)와 VRAM 공존 OK. `--animal` 모드만 11.5GiB라 별도(README 하단)
++
++## 튜닝
++
++`configs/trt_infer_eyes.yaml` (기본 설정 파일):
++
++| 키 | 기본 | 의미 |
++|---|---|---|
++| `max_head_rot_deg` | 12.0 | 고개 회전 클램프 — 카툰은 큰 회전 정보가 없어 크게 젖히면 뭉개짐. 뻣뻣하면 15~18, 안전하게 8~10 |
++| `flag_eye_retargeting` | True | 눈 감김 전달 (왕눈 캐릭터도 감김) |
++| `driving_multiplier` | 1.0 | 전체 모션 배율 |
++
++창 핫키: `R` 눈 리타게팅 토글 · `S` 스티칭 · `Q` 종료
++
++## 문제 해결
++
++- **카메라 없음**: `live.sh`가 자동 attach 시도. 실패하면 PowerShell(관리자) `usbipd bind --busid 2-1` 1회 후 재실행. attach 는 Windows 재부팅마다 풀림
++- **창이 안 뜸**: WSLg 문제 — `ls /mnt/wslg/.X11-unix/X0` 확인
++- **느림/OOM**: `nvidia-smi` 확인, 필요시 `systemctl --user stop face-avatar`
++
++## 로컬 패치 (업스트림 대비, 커밋 `2a455de`)
++
++카툰 퍼펫팅용 수정 3개 — 상세는 `git show 2a455de`:
++
++1. 실시간 eye retargeting 크래시 수정 (좌우 눈 비율 2개 → 평균 수용)
++2. eye retargeting 시 드라이빙 모션(입·고개)이 버려지던 것 → 모션 위에 델타 가산
++3. 고개 회전 축각 클램프 (`max_head_rot_deg`) — 큰 회전 스미어링 방지
++
++## 기타
++
++- 배치(영상 파일로 드라이빙): `run.py --src_image ... --dri_video 영상.mp4 --cfg configs/trt_infer_eyes.yaml` (docker 래핑은 live.sh 참고)
++- 업스트림: [warmshao/FasterLivePortrait](https://github.com/warmshao/FasterLivePortrait) — 원본 문서는 `README.md`
++- 실측 증거·비교 영상: 바탕화면 `드로우페이스_엔진_실측_2026-07-23/`
+diff --git a/live.sh b/live.sh
+new file mode 100755
+index 0000000..a5db892
+--- /dev/null
++++ b/live.sh
+@@ -0,0 +1,33 @@
++#!/usr/bin/env bash
++# LivePortrait 실시간 퍼펫 — 사용법: ./live.sh [그림경로]   (기본: assets/test/girl.jpg)
++# 창에서 Q = 종료. 자세한 건 README_LOCAL.md
++set -e
++cd "$(dirname "$0")"
++
++SRC="${1:-assets/test/girl.jpg}"
++[ -f "$SRC" ] || { echo "그림이 없습니다: $SRC"; exit 1; }
++# 리포 밖 경로(바탕화면 등)면 컨테이너가 볼 수 있게 assets/test/ 로 복사
++case "$(realpath "$SRC")" in
++  "$PWD"/*) : ;;
++  *) cp "$SRC" "assets/test/_input.${SRC##*.}"; SRC="assets/test/_input.${SRC##*.}";;
++esac
++
++# 카메라가 WSL에 없으면 attach 시도 (RealSense D455, Shared 상태 전제)
++if [ ! -e /dev/video4 ]; then
++  echo "카메라 attach 시도…"
++  usbipd.exe attach --wsl --busid 2-1 || {
++    echo "실패 — PowerShell(관리자)에서: usbipd bind --busid 2-1 후 다시 실행"; exit 1; }
++  sleep 2
++fi
++
++exec docker run --rm --gpus=all --name flp_live \
++  -v "$PWD:/root/FLP" \
++  --device /dev/video4:/dev/video0 \
++  -e DISPLAY=:0 -v /mnt/wslg/.X11-unix:/tmp/.X11-unix \
++  shaoguo/faster_liveportrait:v3 \
++  bash -c "export LD_LIBRARY_PATH=/opt/TensorRT-8.6.1.6/lib:\$LD_LIBRARY_PATH; \
++    apt-get install -y -q libsm6 libice6 >/dev/null 2>&1; \
++    /root/miniconda3/bin/pip install -q colorama ffmpeg-python omegaconf tqdm 2>/dev/null; \
++    cd /root/FLP && /root/miniconda3/bin/python run.py \
++      --src_image '$SRC' --dri_video 0 \
++      --cfg configs/trt_infer_eyes.yaml --realtime --paste_back"
+-- 
+2.43.0
+

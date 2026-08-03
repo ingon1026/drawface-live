@@ -1,0 +1,75 @@
+From 177428972b244e1abcc3f5081be120429c2b6460 Mon Sep 17 00:00:00 2001
+From: ingon1026 <157796083+ingon1026@users.noreply.github.com>
+Date: Thu, 23 Jul 2026 15:04:50 +0900
+Subject: [PATCH 3/4] =?UTF-8?q?local:=20README=5FLOCAL=20=EC=8B=A4?=
+ =?UTF-8?q?=EC=B8=A1=20=EC=98=88=EC=8B=9C=20=EC=9D=B4=EB=AF=B8=EC=A7=80=20?=
+ =?UTF-8?q?=E2=80=94=20=EB=90=98=EB=8A=94=20=EA=B7=B8=EB=A6=BC(=EC=9D=BC?=
+ =?UTF-8?q?=EB=9F=AC=EC=8A=A4=ED=8A=B8=C2=B7=EB=AA=85=ED=99=94=C2=B7?=
+ =?UTF-8?q?=EC=9C=A0=ED=99=94)=20vs=20=EC=95=88=20=EB=90=98=EB=8A=94=20?=
+ =?UTF-8?q?=EA=B7=B8=EB=A6=BC(=EB=8F=BC=EC=A7=80=C2=B7=EC=B9=98=EB=B9=84)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ README_LOCAL.md | 33 ++++++++++++++++++++++++++++++---
+ 1 file changed, 30 insertions(+), 3 deletions(-)
+
+diff --git a/README_LOCAL.md b/README_LOCAL.md
+index 0ea7ecb..d3c22cf 100644
+--- a/README_LOCAL.md
++++ b/README_LOCAL.md
+@@ -14,12 +14,39 @@
+ 
+ ## 되는 그림 / 안 되는 그림 (실측)
+ 
+-| | 판정 |
+-|---|---|
++| 그림 | 판정 |
++| --- | --- |
+ | 표준 비율 일러스트·실사·명화·3D 카툰 | ✅ 입·눈·고개 추종 + 화풍 보존 |
+ | 손그림(돼지)·낙서(졸라맨)·치비(왕큰 머리) | ❌ 검출 실패 또는 스미어링 → drawface-live 워프 |
+ | 입 벌린 원본 | ✅ 자연스럽게 다물어짐 (워프 엔진과의 결정적 차이) |
+ 
++### ✅ 되는 예시 — 웹캠 드라이빙 실측 프레임
++
++**일러스트** (벌린 입 원본인데 다물기까지 됨):
++
++![일러스트 소녀](docs_local/ok_girl.png)
++
++**명화 — 진주 귀걸이를 한 소녀** (베르메르):
++
++![진주 귀걸이](docs_local/ok_pearl.png)
++
++**유화 초상** (부그로):
++
++![유화](docs_local/ok_oil.png)
++
++### ❌ 안 되는 예시
++
++**손그림 돼지** — 얼굴 검출 실패, 코만 미세하게 흔들리는 사실상 정지영상
++(animal 모드는 검출은 되지만 머리 전체가 뭉개져 사용 불가):
++
++![돼지 실패](docs_local/fail_pig.png)
++
++**치비 캐릭터** — 왕큰 머리 비율이라 검출 자체가 안 됨 ("No face detected"):
++
++<img src="docs_local/fail_boy.png" width="200">
++
++→ 이 부류는 **drawface-live 워프 엔진**이 정답 (화풍 100% 보존, github.io에서 동작)
++
+ ## 성능 (RTX 4070 Ti, TensorRT)
+ 
+ - 27~37 ms/frame ≈ **30fps 실시간**
+@@ -30,7 +57,7 @@
+ `configs/trt_infer_eyes.yaml` (기본 설정 파일):
+ 
+ | 키 | 기본 | 의미 |
+-|---|---|---|
++| --- | --- | --- |
+ | `max_head_rot_deg` | 12.0 | 고개 회전 클램프 — 카툰은 큰 회전 정보가 없어 크게 젖히면 뭉개짐. 뻣뻣하면 15~18, 안전하게 8~10 |
+ | `flag_eye_retargeting` | True | 눈 감김 전달 (왕눈 캐릭터도 감김) |
+ | `driving_multiplier` | 1.0 | 전체 모션 배율 |
+-- 
+2.43.0
+

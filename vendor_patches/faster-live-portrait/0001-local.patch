@@ -1,0 +1,229 @@
+From 2a455deee249daae0ea1f15c87459f04980fce1b Mon Sep 17 00:00:00 2001
+From: ingon1026 <157796083+ingon1026@users.noreply.github.com>
+Date: Thu, 23 Jul 2026 14:55:45 +0900
+Subject: [PATCH 1/4] =?UTF-8?q?local:=20=EC=B9=B4=ED=88=B0=20=ED=8D=BC?=
+ =?UTF-8?q?=ED=8E=AB=ED=8C=85=20=ED=8A=9C=EB=8B=9D=20=E2=80=94=20=EC=8B=A4?=
+ =?UTF-8?q?=EC=8B=9C=EA=B0=84=20=EB=88=88=20=EB=B2=84=EA=B7=B8=ED=94=BD?=
+ =?UTF-8?q?=EC=8A=A4=20+=20=EB=AA=A8=EC=85=98=20=EB=B3=B4=EC=A1=B4=20?=
+ =?UTF-8?q?=EB=A6=AC=ED=83=80=EA=B2=8C=ED=8C=85=20+=20=EA=B3=A0=EA=B0=9C?=
+ =?UTF-8?q?=20=ED=81=B4=EB=9E=A8=ED=94=84?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+① calc_combined_eye_ratio: 카메라 경로가 좌우 눈 비율 2개를 넘기는데 (1,1) reshape로
+크래시 → 평균으로 수용. ② eye retargeting 켜면 relative 모드가 x_s 기준이라 드라이빙
+모션(입·고개)이 통째로 버려짐 → x_d_i_new 기준으로 델타 가산(퍼펫팅용). ③ 카툰 1장은
+큰 고개 회전 정보가 없어 스미어링 → 상대 회전 축각 클램프(infer_params.max_head_rot_deg,
+기본 끔). trt_infer_eyes.yaml = eye retargeting on + 클램프 12도 프리셋.
+실측(RTX 4070 Ti, TRT): 27~37ms/frame, 일러스트 소녀 입·눈·고개 추종 + 화풍 보존.
+---
+ configs/trt_infer_eyes.yaml                   | 115 ++++++++++++++++++
+ scripts/all_onnx2trt.sh                       |  18 +--
+ .../faster_live_portrait_pipeline.py          |  20 ++-
+ 3 files changed, 141 insertions(+), 12 deletions(-)
+ create mode 100644 configs/trt_infer_eyes.yaml
+
+diff --git a/configs/trt_infer_eyes.yaml b/configs/trt_infer_eyes.yaml
+new file mode 100644
+index 0000000..2161320
+--- /dev/null
++++ b/configs/trt_infer_eyes.yaml
+@@ -0,0 +1,115 @@
++models:
++  warping_spade:
++    name: "WarpingSpadeModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/warping_spade-fix.trt"
++  motion_extractor:
++    name: "MotionExtractorModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/motion_extractor.trt"
++  landmark:
++    name: "LandmarkModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/landmark.trt"
++  face_analysis:
++    name: "FaceAnalysisModel"
++    predict_type: "trt"
++    model_path:
++      - "./checkpoints/liveportrait_onnx/retinaface_det_static.trt"
++      - "./checkpoints/liveportrait_onnx/face_2dpose_106_static.trt"
++  app_feat_extractor:
++    name: "AppearanceFeatureExtractorModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/appearance_feature_extractor.trt"
++  stitching:
++    name: "StitchingModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/stitching.trt"
++  stitching_eye_retarget:
++    name: "StitchingModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/stitching_eye.trt"
++  stitching_lip_retarget:
++    name: "StitchingModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/stitching_lip.trt"
++
++animal_models:
++  warping_spade:
++    name: "WarpingSpadeModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_animal_onnx/warping_spade-fix-v1.1.trt"
++  motion_extractor:
++    name: "MotionExtractorModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_animal_onnx/motion_extractor-v1.1.trt"
++  app_feat_extractor:
++    name: "AppearanceFeatureExtractorModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_animal_onnx/appearance_feature_extractor-v1.1.trt"
++  stitching:
++    name: "StitchingModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_animal_onnx/stitching-v1.1.trt"
++  stitching_eye_retarget:
++    name: "StitchingModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_animal_onnx/stitching_eye-v1.1.trt"
++  stitching_lip_retarget:
++    name: "StitchingModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_animal_onnx/stitching_lip-v1.1.trt"
++  landmark:
++    name: "LandmarkModel"
++    predict_type: "trt"
++    model_path: "./checkpoints/liveportrait_onnx/landmark.trt"
++  face_analysis:
++    name: "FaceAnalysisModel"
++    predict_type: "trt"
++    model_path:
++      - "./checkpoints/liveportrait_onnx/retinaface_det_static.trt"
++      - "./checkpoints/liveportrait_onnx/face_2dpose_106_static.trt"
++
++joyvasa_models:
++  motion_model_path: "checkpoints/JoyVASA/motion_generator/motion_generator_hubert_chinese.pt"
++  audio_model_path: "checkpoints/chinese-hubert-base"
++  motion_template_path: "checkpoints/JoyVASA/motion_template/motion_template.pkl"
++
++crop_params:
++  src_dsize: 512
++  src_scale: 2.3
++  src_vx_ratio: 0.0
++  src_vy_ratio: -0.125
++  dri_scale: 2.2
++  dri_vx_ratio: 0.0
++  dri_vy_ratio: -0.1
++
++
++infer_params:
++  flag_crop_driving_video: False
++  flag_normalize_lip: True
++  flag_source_video_eye_retargeting: False
++  flag_video_editing_head_rotation: False
++  flag_eye_retargeting: True
++  flag_lip_retargeting: False
++  flag_stitching: True
++  flag_relative_motion: True
++  flag_pasteback: True
++  flag_do_crop: True
++  flag_do_rot: True
++
++  # NOT EXPOERTED PARAMS
++  lip_normalize_threshold: 0.1 # threshold for flag_normalize_lip
++  source_video_eye_retargeting_threshold: 0.18 # threshold for eyes retargeting if the input is a source video
++  driving_smooth_observation_variance: 1e-7 # smooth strength scalar for the animated video when the input is a source video, the larger the number, the smoother the animated video; too much smoothness would result in loss of motion accuracy
++  anchor_frame: 0 # TO IMPLEMENT
++  mask_crop_path: "./assets/mask_template.png"
++  driving_multiplier: 1.0
++  max_head_rot_deg: 12.0   # 카툰 1장 한계 보호 — 고개 회전 총량 클램프
++  animation_region: "all"
++
++  cfg_mode: "incremental"
++  cfg_scale: 1.2
++
++  source_max_dim: 1280 # the max dim of height and width of source image
++  source_division: 2 # make sure the height and width of source image can be divided by this number
+\ No newline at end of file
+diff --git a/scripts/all_onnx2trt.sh b/scripts/all_onnx2trt.sh
+index 0bb0a7a..7e9706e 100644
+--- a/scripts/all_onnx2trt.sh
++++ b/scripts/all_onnx2trt.sh
+@@ -1,17 +1,17 @@
+ #!/bin/bash
+ 
+ # warping+spade model
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/warping_spade-fix.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/warping_spade-fix.onnx
+ # landmark model
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/landmark.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/landmark.onnx
+ # motion_extractor model
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/motion_extractor.onnx -p fp32
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/motion_extractor.onnx -p fp32
+ # face_analysis model
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/retinaface_det_static.onnx
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/face_2dpose_106_static.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/retinaface_det_static.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/face_2dpose_106_static.onnx
+ # appearance_extractor model
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/appearance_feature_extractor.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/appearance_feature_extractor.onnx
+ # stitching model
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/stitching.onnx
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/stitching_eye.onnx
+-python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/stitching_lip.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/stitching.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/stitching_eye.onnx
++/root/miniconda3/bin/python scripts/onnx2trt.py -o ./checkpoints/liveportrait_onnx/stitching_lip.onnx
+diff --git a/src/pipelines/faster_live_portrait_pipeline.py b/src/pipelines/faster_live_portrait_pipeline.py
+index 9031fc3..3f2595d 100644
+--- a/src/pipelines/faster_live_portrait_pipeline.py
++++ b/src/pipelines/faster_live_portrait_pipeline.py
+@@ -112,7 +112,8 @@ class FasterLivePortraitPipeline:
+ 
+     def calc_combined_eye_ratio(self, c_d_eyes_i, source_lmk):
+         c_s_eyes = calc_eye_close_ratio(source_lmk[None])
+-        c_d_eyes_i = np.array(c_d_eyes_i).reshape(1, 1)
++        # camera path passes per-eye ratios (2 values); the retarget slot expects one scalar -> mean
++        c_d_eyes_i = np.array(c_d_eyes_i, dtype=np.float32).mean().reshape(1, 1)
+         # [c_s,eyes, c_d,eyes,i]
+         combined_eye_ratio_tensor = np.concatenate([c_s_eyes, c_d_eyes_i], axis=1)
+         return combined_eye_ratio_tensor
+@@ -342,7 +343,18 @@ class FasterLivePortraitPipeline:
+                     if self.is_source_video:
+                         R_new = self.R_d_smooth.process(R_d_i)
+                     else:
+-                        R_new = (R_d_i @ np.transpose(R_d_0, (0, 2, 1))) @ R_s
++                        R_rel = R_d_i @ np.transpose(R_d_0, (0, 2, 1))
++                        # cartoon puppeteering: a single drawing has no 3D info for large head
++                        # rotations (looking up smears the neck/face) -> clamp total relative
++                        # rotation via axis-angle. Knob: infer_params.max_head_rot_deg.
++                        lim_deg = float(self.cfg.infer_params.get("max_head_rot_deg", 0) or 0)
++                        if lim_deg > 0:
++                            rvec, _ = cv2.Rodrigues(R_rel[0].astype(np.float64))
++                            ang = float(np.linalg.norm(rvec))
++                            lim = np.deg2rad(lim_deg)
++                            if ang > lim:
++                                R_rel = cv2.Rodrigues(rvec * (lim / ang))[0][None].astype(R_rel.dtype)
++                        R_new = R_rel @ R_s
+                 else:
+                     R_new = R_s
+ 
+@@ -457,7 +469,9 @@ class FasterLivePortraitPipeline:
+                         lip_delta = self.retarget_lip(x_s, combined_lip_ratio_tensor)
+ 
+                     if self.cfg.infer_params.flag_relative_motion:  # use x_s
+-                        x_d_i_new = x_s + \
++                        # puppeteering patch: keep full driving motion (mouth/head) and ADD the
++                        # retarget deltas on top, instead of replacing motion with the static source.
++                        x_d_i_new = x_d_i_new + \
+                                     (eyes_delta.reshape(-1, x_s.shape[1], 3) if eyes_delta is not None else 0) + \
+                                     (lip_delta.reshape(-1, x_s.shape[1], 3) if lip_delta is not None else 0)
+                     else:  # use x_d,i
+
+base-commit: 8aad3602177547aaa5e4beec0c3ef5b7944e7a1f
+-- 
+2.43.0
+

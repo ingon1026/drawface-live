@@ -1,0 +1,25 @@
+name: Vendor sync
+
+# docs/avatar_core.js 는 talking-drawing-avatar 의 사본이라 그쪽이 바뀌면 조용히 뒤처진다.
+# 실제로 한 번 그렇게 벌어졌다(2026-07-31). push 때만 보면 원본만 바뀐 날은 못 잡으므로
+# 매일 한 번도 돌린다. Verify 와 분리해 둔 이유: 이 빨간불은 "우리 코드가 깨졌다"가 아니라
+# "원본을 따라가야 한다" 하나만 뜻해야 한다.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  avatar-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docs/avatar_core.js 가 원본과 같은지 확인
+        # HOME/face 가 없으므로 스크립트가 GitHub raw 로 폴백한다.
+        run: ./scripts/sync_avatar_core.sh --check

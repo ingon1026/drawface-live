@@ -53,7 +53,8 @@ jobs:
           sdk: static
           app_file: index.html
           pinned: false
-          short_description: Real-time facial expression mirroring onto hand-drawn and 3D characters
+          # HF 는 short_description 을 60자로 제한한다 (초과 시 업로드 자체가 거부됨).
+          short_description: Real-time face mirroring onto drawings, all in the browser
           ---
 
           Your webcam expression, mirrored onto a drawing — in real time.

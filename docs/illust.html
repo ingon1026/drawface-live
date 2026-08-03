@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>일러스트 트랙 — DrawFace Live</title>
+<title>Illustration Track — DrawFace Live</title>
 <!-- 정적 쇼케이스. 이 페이지는 추론을 돌리지 않는다 — 로컬 GPU 에서 미리 렌더한 결과만 재생한다.
      실시간 트랙(index.html)과 달리 LivePortrait 는 TensorRT + GPU 가 필요해 웹에 못 올린다.
      핵심 메시지는 "되는 그림 / 안 되는 그림" 대조다. 성공 사례만 걸면 다음 사람이
@@ -44,70 +44,76 @@
 </head>
 <body>
 <main>
-  <h1>일러스트 트랙 — 그림이 내 표정을 따라 한다</h1>
-  <p class="lede">FasterLivePortrait · 로컬 GPU 전용 · 아래는 미리 렌더한 결과입니다</p>
+  <h1>Illustration Track — the artwork follows my face</h1>
+  <p class="lede">FasterLivePortrait · local GPU only · everything below is pre-rendered</p>
 
   <p>
-    이 저장소에는 얼굴을 움직이는 방법이 <strong>두 가지</strong> 있습니다. 대상에 따라 되는 쪽이 갈립니다 —
-    같은 모델인데 그림 종류에 따라 결과가 정반대라, 실측으로 확인한 뒤 트랙을 나눴습니다.
+    This repo has <strong>two</strong> ways to animate a face, and which one works depends entirely on the
+    artwork. The same model gives opposite results on different kinds of drawings, so we measured it and
+    split the pipeline into two tracks.
   </p>
 
-  <h2><span class="tag ok">되는 것</span> &nbsp;표준 비율 일러스트 · 명화</h2>
+  <h2><span class="tag ok">Works</span> &nbsp;Standard-proportion illustration · fine art</h2>
   <div class="duo">
     <figure>
       <video src="img/flp/vermeer.mp4" autoplay loop muted playsinline preload="metadata"></video>
       <figcaption>
-        베르메르 〈진주 귀걸이를 한 소녀〉(1665, 퍼블릭 도메인).
-        붓질과 캔버스 균열이 그대로 남은 채 고개와 표정만 움직입니다.
+        Vermeer, 〈Girl with a Pearl Earring〉 (1665, public domain).
+        The brushwork and canvas craquelure stay intact while only the head pose and expression move.
       </figcaption>
     </figure>
     <figure>
-      <img src="img/flp_illust_ok.png" alt="벡터 일러스트를 구동한 6프레임 — 선과 채색이 유지된 채 표정만 바뀐다">
+      <img src="img/flp_illust_ok.png" alt="Six frames of a driven vector illustration — the linework and coloring hold while only the expression changes">
       <figcaption>
-        벡터 일러스트 6프레임. 선과 채색이 재생성되지 않아 원래 화풍이 유지됩니다.
+        Six frames of a vector illustration. The linework and coloring are never regenerated, so the
+        original style survives.
       </figcaption>
     </figure>
   </div>
 
-  <h2><span class="tag no">안 되는 것</span> &nbsp;손그림 · 낙서 · 치비</h2>
+  <h2><span class="tag no">Doesn't work</span> &nbsp;Hand drawings · doodles · chibi</h2>
   <figure style="max-width:660px">
-    <img src="img/flp/fail_handdrawn.png" alt="손그림에 LivePortrait 를 적용한 결과 — 얼굴이 검출되지 않아 세 프레임 모두 변화가 없다">
+    <img src="img/flp/fail_handdrawn.png" alt="LivePortrait applied to a hand drawing — no face is detected, so all three frames stay unchanged">
     <figcaption>
-      같은 파이프라인, 같은 웹캠 입력. 손그림은 <strong>얼굴 검출 자체가 실패</strong>해 아무 일도 일어나지 않고,
-      검출을 강제하면 머리 전체가 뭉개집니다(스미어링). 흰 종이 위 선화가 학습 분포 밖이기 때문입니다.
+      Same pipeline, same webcam input. On a hand drawing <strong>face detection fails outright</strong>,
+      so nothing happens at all — and if you force detection through, the entire head smears instead.
+      Line art on white paper is outside the model's training distribution.
     </figcaption>
   </figure>
   <p>
-    그래서 손그림은 이 트랙이 아니라 <a href="./">ARAP 워프 미러링</a>이 담당합니다.
-    원본 획을 삼각형 그물로 변형하는 방식이라 없는 픽셀을 만들지 않고, 브라우저에서 실시간으로 돕니다.
+    That is why hand drawings are handled by <a href="./">ARAP warp mirroring</a> rather than this track.
+    It deforms the original strokes over a triangle mesh, so it never invents pixels that were not there,
+    and it runs in real time in the browser.
   </p>
 
-  <h2>왜 웹에서 직접 못 돌리나</h2>
+  <h2>Why this can't run in the browser</h2>
   <div class="card">
     <table>
-      <tr><th>백엔드</th><th>프레임당</th><th>체감</th></tr>
-      <tr><td>TensorRT (RTX 4070 Ti)</td><td><strong>27–37 ms</strong></td><td>실시간 (약 30fps)</td></tr>
-      <tr><td>ONNX GPU (같은 카드)</td><td>118–124 ms</td><td>약 8fps — 실시간 아님</td></tr>
+      <tr><th>Backend</th><th>Per frame</th><th>In practice</th></tr>
+      <tr><td>TensorRT (RTX 4070 Ti)</td><td><strong>27–37 ms</strong></td><td>Real-time (~30 fps)</td></tr>
+      <tr><td>ONNX GPU (same card)</td><td>118–124 ms</td><td>~8 fps — not real-time</td></tr>
     </table>
     <p style="margin-top:12px">
-      실시간은 <strong>TensorRT 전용 숫자</strong>입니다. 그런데 TensorRT 엔진은 빌드한 GPU와 버전에 묶여
-      다른 장비에서 로드되지 않습니다. 무료 호스팅은 CPU라 더 느리고, 웹캠 프레임을 서버까지 왕복시키면
-      "따라 한다"는 체감도 무너집니다. 그래서 이 페이지는 <strong>미리 렌더한 결과</strong>만 보여줍니다.
+      Real-time is a <strong>TensorRT-only number</strong>. And a TensorRT engine is bound to the GPU and
+      versions it was built on — it will not load on any other machine. Free hosting is CPU-only, so it is
+      slower still, and round-tripping webcam frames through a server destroys the feeling that the drawing
+      is following you. That is why this page only shows <strong>pre-rendered results</strong>.
     </p>
   </div>
 
   <div class="row">
-    <a class="btn" href="./">실시간 미러링 해보기</a>
-    <a class="btn alt" href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">직접 돌려보는 법</a>
+    <a class="btn" href="./">Try the real-time mirroring</a>
+    <a class="btn alt" href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">How to run it yourself</a>
   </div>
 
   <footer>
-    영상은 로컬 GPU(RTX 4070 Ti, TensorRT)에서 미리 렌더한 것으로, 이 페이지는 추론을 돌리지 않습니다.
-    소리는 담기지 않았습니다.<br>
-    원본 그림 — 베르메르 〈진주 귀걸이를 한 소녀〉는 퍼블릭 도메인이며
-    <a href="https://github.com/warmshao/FasterLivePortrait">FasterLivePortrait</a>(MIT)의 예제 이미지입니다.
-    돼지 그림은 직접 그린 것입니다.<br>
-    재현 방법과 로컬 패치는 <a href="https://github.com/ingon1026/drawface-live/blob/main/THIRD_PARTY.md">THIRD_PARTY.md</a>에 있습니다.
+    The clips were pre-rendered on a local GPU (RTX 4070 Ti, TensorRT) — this page runs no inference.
+    There is no audio.<br>
+    Source artwork — Vermeer's 〈Girl with a Pearl Earring〉 is public domain and ships as an example image
+    with <a href="https://github.com/warmshao/FasterLivePortrait">FasterLivePortrait</a> (MIT).
+    The pig drawing is my own.<br>
+    Reproduction steps and local patches are in
+    <a href="https://github.com/ingon1026/drawface-live/blob/main/THIRD_PARTY.md">THIRD_PARTY.md</a>.
   </footer>
 </main>
 </body>

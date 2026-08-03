@@ -18,14 +18,19 @@ const $ = (id) => document.getElementById(id);
 const status = (msg) => { $("status").textContent = msg; };
 
 // Surface every failure in the status line — the user has no console open.
-window.addEventListener("error", (e) => status(`오류: ${e.message}`));
-window.addEventListener("unhandledrejection", (e) => status(`오류: ${e.reason?.message ?? e.reason}`));
+window.addEventListener("error", (e) => status(`Error: ${e.message}`));
+window.addEventListener("unhandledrejection", (e) => status(`Error: ${e.reason?.message ?? e.reason}`));
 
 const VIZ_BARS = [
   ["eyeL", "eyeBlinkLeft"], ["eyeR", "eyeBlinkRight"], ["jaw", "jawOpen"],
   ["smile", "mouthSmileLeft"], ["pucker", "mouthPucker"],
 ];
-const CLICK_STEPS = ["왼눈 중심", "오른눈 중심", "입 좌상단", "입 우하단"];
+const CLICK_STEPS = [
+  "centre of the eye on the screen's left",
+  "centre of the eye on the screen's right",
+  "mouth box: top-left corner",
+  "mouth box: bottom-right corner",
+];
 const PERF_MODE_KEY = "drawface-live:performance-mode";
 const PERF_MODES = new Set(["auto", "full", "economy"]);
 
@@ -43,7 +48,7 @@ async function refreshCameras() {
   sel.innerHTML = "";
   try {
     const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
-    devs.forEach((d, i) => sel.add(new Option(d.label || `카메라 ${i + 1}`, d.deviceId)));
+    devs.forEach((d, i) => sel.add(new Option(d.label || `Camera ${i + 1}`, d.deviceId)));
     if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
     const rgb = [...sel.options].find((o) => /rgb|color/i.test(o.text));
     if (rgb && !cur) sel.value = rgb.value;
@@ -52,14 +57,14 @@ async function refreshCameras() {
 navigator.mediaDevices?.addEventListener?.("devicechange", refreshCameras);
 
 const CAM_ERRORS = {
-  NotAllowedError: "카메라 권한이 차단됐습니다 — 주소창의 자물쇠/카메라 아이콘에서 '허용'으로 바꾸고 새로고침하세요",
-  NotFoundError: "카메라를 찾을 수 없습니다 — 연결 상태를 확인하세요 (WSL에 attach된 카메라는 Windows에서 보이지 않습니다)",
-  NotReadableError: "다른 프로그램이 카메라를 사용 중입니다 — 해당 앱을 닫고 다시 시도하세요",
-  OverconstrainedError: "선택한 카메라가 요청 해상도를 지원하지 않습니다 — 다른 카메라를 선택해 보세요",
+  NotAllowedError: "Camera permission is blocked — set it to 'Allow' from the lock/camera icon in the address bar and reload the page",
+  NotFoundError: "No camera found — check that it is connected (a camera attached to WSL is not visible to Windows)",
+  NotReadableError: "Another program is using the camera — close that app and try again",
+  OverconstrainedError: "The selected camera does not support the requested resolution — try a different camera",
 };
 
 function showTrackerRetry(message) {
-  status(`${message} — 네트워크를 확인한 뒤 다시 시도하세요`);
+  status(`${message} — check your network connection and try again`);
   $("trackerRetryBtn").hidden = false;
 }
 
@@ -95,8 +100,8 @@ const ob = { img: null, points: [], draft: null, previewChar: null, drag: null, 
 function obStatus() {
   const n = ob.points.length;
   $("onboardStatus").textContent = n < 4
-    ? `클릭 ${n + 1}/4: ${CLICK_STEPS[n]}`
-    : "좌표 완료 — 이름을 확인하고 [미리보기]";
+    ? `Click ${n + 1}/4: ${CLICK_STEPS[n]}`
+    : "All 4 points are set — check the name, then press [Preview]";
   $("obGenerate").disabled = n < 4 || !$("charName").value.trim();
 }
 
@@ -177,7 +182,7 @@ async function openOnboarding(file) {
   $("charName").value = file.name.replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "-").toLowerCase();
   $("onboardDlg").showModal();
   obRedraw();
-  $("onboardStatus").textContent = "얼굴 자동 인식 시도 중…";
+  $("onboardStatus").textContent = "Trying to detect the face automatically…";
   // Photo-trained models often miss hand drawings — prefill when it works,
   // fall back to manual clicks when it doesn't (see outputs/benchmark.md).
   const auto = await detectOnImage(ob.img);
@@ -189,7 +194,7 @@ async function openOnboarding(file) {
     $("eyeHalf").value = auto.eyeHalf;
     obRedraw();
     obStatus();
-    $("onboardStatus").textContent = "얼굴 자동 인식됨 — 박스 모서리로 크기 조절, 내부 드래그로 이동 후 [미리보기]";
+    $("onboardStatus").textContent = "Face detected — drag a corner to resize, inside to move, then [Preview]";
   } else if (ob.points.length === 0) {
     obStatus(); // manual flow from step ①
   }
@@ -211,7 +216,7 @@ $("onboardCanvas").addEventListener("click", (e) => {
   ob.points.push([x, y]);
   if (ob.points.length === 4) {
     expandMouthPoints();
-    $("onboardStatus").textContent = "입 영역을 잉크에 맞춰 자동 확장했습니다 — 모서리로 크기 조절, 내부 드래그로 이동할 수 있습니다";
+    $("onboardStatus").textContent = "Mouth box auto-expanded to the ink — drag a corner to resize, inside to move";
   }
   obRedraw();
   if (ob.points.length !== 4) obStatus();
@@ -267,7 +272,7 @@ function endBoxDrag(e) {
   if (!ob.drag) return;
   ob.drag = null;
   e.currentTarget.style.cursor = "crosshair";
-  $("onboardStatus").textContent = "입 영역을 조정했습니다 — [미리보기]로 결과를 확인하세요";
+  $("onboardStatus").textContent = "Mouth area adjusted — press [Preview] to check the result";
 }
 
 $("onboardCanvas").addEventListener("pointerup", endBoxDrag);
@@ -295,9 +300,9 @@ $("obGenerate").onclick = () => {
     ob.previewChar = prepareCharacter(ob.draft);
     $("onboardReview").hidden = false;
     renderOnboardingPreview();
-    $("onboardStatus").textContent = "표정별 결과를 확인한 뒤 저장하거나 위치를 수정하세요";
+    $("onboardStatus").textContent = "Check each expression, then save it or adjust the positions";
   } catch (err) {
-    $("onboardStatus").textContent = `미리보기 생성 실패: ${err.message}`;
+    $("onboardStatus").textContent = `Failed to generate the preview: ${err.message}`;
   }
 };
 
@@ -319,7 +324,7 @@ function renderOnboardingPreview() {
 $("reviewState").onchange = renderOnboardingPreview;
 $("obEdit").onclick = () => {
   invalidateOnboardingPreview();
-  $("onboardStatus").textContent = "빨간 박스 모서리를 드래그해 크기를 조절하거나, 내부를 드래그해 이동하세요";
+  $("onboardStatus").textContent = "Drag a corner of the red box to resize, or drag inside it to move";
 };
 $("obSave").onclick = () => {
   if (!ob.draft) return;
@@ -327,9 +332,9 @@ $("obSave").onclick = () => {
     saveCharacter(ob.draft.name, ob.draft.manifest, ob.draft.canvases);
     refreshList(ob.draft.name);
     $("onboardDlg").close();
-    status(`캐릭터 '${ob.draft.name}' 저장 완료 — 시작을 누르세요`);
+    status(`Character '${ob.draft.name}' saved — press Start`);
   } catch (err) {
-    $("onboardStatus").textContent = `저장 실패: ${err.message}`;
+    $("onboardStatus").textContent = `Failed to save: ${err.message}`;
   }
 };
 
@@ -390,21 +395,21 @@ $("boyBtn").onclick = () => { window.location.href = "boy.html"; };
 
 $("exampleBtn").onclick = () => {
   try {
-    const name = "예시 캐릭터";
+    const name = "example-character";
     const { manifest, canvases } = buildCharacter(exampleDrawing(), name,
       { L: [220, 252], R: [292, 252] }, 20, [222, 290, 290, 332]);
     deriveAll(canvases, manifest);
     saveCharacter(name, manifest, canvases);
     refreshList(name);
-    status("예시 캐릭터를 불러왔습니다 — 시작을 눌러 웹캠 표정을 따라 해보세요");
+    status("Example character loaded — press Start and try mirroring your webcam expressions");
   } catch (err) {
-    status(`예시 캐릭터 생성 실패: ${err.message}`);
+    status(`Failed to create the example character: ${err.message}`);
   }
 };
 
 $("deleteBtn").onclick = () => {
   const name = $("charSelect").value;
-  if (name && confirm(`'${name}' 캐릭터를 삭제할까요?`)) { deleteCharacter(name); refreshList(); }
+  if (name && confirm(`Delete the character '${name}'?`)) { deleteCharacter(name); refreshList(); }
 };
 
 // ---------- live loop ----------
@@ -420,12 +425,12 @@ async function start() {
   clearTrackerRetry();
   let loadingTracker = true;
   try {
-    status("추적 모델 로딩 중…");
+    status("Loading the tracking model…");
     run.workerTracker = await createWorkerTracker(); // null → silent sync fallback
     if (run.workerTracker) console.log("[tracker] worker mode");
     else run.tracker ??= await createTracker();
     loadingTracker = false;
-    status("웹캠 여는 중…");
+    status("Opening the webcam…");
     const video_c = { width: CONFIG.camera.width, height: CONFIG.camera.height };
     if ($("camSelect").value) video_c.deviceId = { exact: $("camSelect").value };
     try {
@@ -471,7 +476,7 @@ async function start() {
     };
     run.perf = st.perf;
     run.on = true;
-    $("startBtn").textContent = "정지";
+    $("startBtn").textContent = "Stop";
     $("startBtn").disabled = false;
     $("calibBtn").disabled = false;
     $("recordBtn").disabled = !("MediaRecorder" in window && "captureStream" in $("output"));
@@ -484,8 +489,8 @@ async function start() {
     loop(video, char, st);
   } catch (err) {
     stop();
-    if (loadingTracker) showTrackerRetry(`추적 모델 로딩 실패: ${err.message}`);
-    else status(`시작 실패: ${err.message}`);
+    if (loadingTracker) showTrackerRetry(`Failed to load the tracking model: ${err.message}`);
+    else status(`Failed to start: ${err.message}`);
   }
 }
 
@@ -497,7 +502,7 @@ function loop(video, char, st) {
       loopBody(video, char, st, now);
       st.perf.record(now, performance.now() - began);
     } catch (err) {
-      status(`루프 오류: ${err.message}`);
+      status(`Render loop error: ${err.message}`);
       console.error(err);
       stop();
       return;
@@ -537,13 +542,13 @@ function workerObserve(video, st, now) {
     run.workerTracker.close();
     run.workerTracker = null;
     if (!run.tracker && !run.trackerLoading) {
-      status("추적 워커를 복구하는 중…");
+      status("Recovering the tracking worker…");
       run.trackerLoading = createTracker()
         .then((tracker) => { run.tracker = tracker; })
         .catch((err) => {
           if (run.on) {
             stop();
-            showTrackerRetry(`추적 복구 실패: ${err.message}`);
+            showTrackerRetry(`Failed to recover face tracking: ${err.message}`);
           }
         })
         .finally(() => { run.trackerLoading = null; });
@@ -650,7 +655,7 @@ function loopBody(video, char, st, now) {
   // The recording cue must survive this per-frame status overwrite (spec §9).
   const rec = run.recording ? "  ● REC" : "";
   status((st.calib.active
-    ? "캘리브레이션 중 — 정면을 보고 무표정을 유지하세요"
+    ? "Calibrating — face the camera straight on and keep a neutral expression"
     : `${st.fps.toFixed(0)} FPS · ${st.perf.label()}${run.workerTracker ? " · worker" : ""} · ${useWarp ? "warp" : "sprite"} · ${obs ? "face:OK" : "face:LOST"}`
       + (useWarp ? "" : ` · L:${eyeStates.L} R:${eyeStates.R} mouth:${mouth}`)) + rec);
 }
@@ -692,12 +697,12 @@ function stop() {
   run.video = null;
   run.perf = null;
   window.onkeydown = null;
-  $("startBtn").textContent = "시작";
+  $("startBtn").textContent = "Start";
   $("startBtn").disabled = $("charSelect").options.length === 0;
   $("calibBtn").disabled = true;
   $("recordBtn").disabled = true;
-  $("recordBtn").textContent = "녹화 시작";
-  status("정지됨");
+  $("recordBtn").textContent = "Start recording";
+  status("Stopped");
 }
 
 function recordMimeType() {
@@ -708,12 +713,12 @@ function recordMimeType() {
 function startRecording() {
   if (!run.on || run.recording || !("MediaRecorder" in window) || !("captureStream" in $("output"))) return;
   const mimeType = recordMimeType();
-  if (!mimeType) { status("이 브라우저는 WebM 녹화를 지원하지 않습니다"); return; }
+  if (!mimeType) { status("This browser does not support WebM recording"); return; }
   const stream = $("output").captureStream(30);
   const recording = { stream, chunks: [], recorder: null };
   const recorder = recording.recorder = new MediaRecorder(stream, { mimeType });
   recorder.ondataavailable = (e) => { if (e.data.size) recording.chunks.push(e.data); };
-  recorder.onerror = () => status("녹화 중 오류가 발생했습니다");
+  recorder.onerror = () => status("An error occurred while recording");
   recorder.onstop = () => {
     stream.getTracks().forEach((track) => track.stop());
     if (recording.chunks.length) {
@@ -724,15 +729,15 @@ function startRecording() {
       a.download = `drawface-live-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      status("녹화 완료 — WebM 다운로드를 시작했습니다");
+      status("Recording finished — the WebM download has started");
     }
     if (run.recording === recording) run.recording = null;
-    $("recordBtn").textContent = "녹화 시작";
+    $("recordBtn").textContent = "Start recording";
   };
   run.recording = recording;
   recorder.start(1000);
-  $("recordBtn").textContent = "녹화 종료";
-  status("녹화 중 — 결과 캔버스만 WebM으로 저장합니다");
+  $("recordBtn").textContent = "Stop recording";
+  status("Recording — only the output canvas is saved as WebM");
 }
 
 function stopRecording() {

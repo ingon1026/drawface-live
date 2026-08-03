@@ -65,9 +65,9 @@ export class RenderPerformance {
   get economical() { return this.mode === "economy"; }
 
   label() {
-    const policy = this.preference === "full" ? "고품질 고정"
-      : this.preference === "economy" ? "절전 고정"
-        : this.economical ? "자동 절전" : "자동";
+    const policy = this.preference === "full" ? "always high quality"
+      : this.preference === "economy" ? "always power saving"
+        : this.economical ? "auto power saving" : "auto";
     return `${this.workMs.toFixed(0)}ms · ${policy}`;
   }
 }

@@ -36,7 +36,7 @@ export function saveCharacter(name, manifest, canvases) {
     localStorage.setItem(KEY, JSON.stringify(all));
   } catch (e) {
     if (e.name === "QuotaExceededError")
-      throw new Error("브라우저 저장 공간이 가득 찼어요. 기존 캐릭터를 삭제하고 다시 시도하세요.");
+      throw new Error("The browser storage is full. Delete an existing character and try again.");
     throw e;
   }
 }

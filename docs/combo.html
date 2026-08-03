@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DrawFace Live — 5인 동시 미러링</title>
+<title>DrawFace Live — Five at Once</title>
 <!-- 내 얼굴(MediaPipe) + 석고 남/여(mark·claire) + 소년/소녀를 한 makeMirror 로 동시 구동.
      README 히어로용 5칸 합성 녹화 페이지 (레이아웃: 나 | 석고 위아래 | 캐릭터 위아래). -->
 <style>
@@ -31,23 +31,23 @@
 </head>
 <body>
 <main>
-  <h1>5인 동시 미러링 — 내 표정 → 석고 남/여 + 소년/소녀</h1>
+  <h1>Five at once — my face → plaster busts (M/F) + boy/girl</h1>
   <div class="grid">
-    <div class="cell" id="meCell"><span class="tag">나 (MediaPipe)</span><canvas id="meCv" width="360" height="360"></canvas></div>
-    <div class="cell d3"><span class="tag">석고 남</span><canvas id="markCv"></canvas></div>
-    <div class="cell d2"><span class="tag">소년</span><canvas id="boyCv" width="400" height="400"></canvas></div>
-    <div class="cell d3"><span class="tag">석고 여</span><canvas id="claireCv"></canvas></div>
-    <div class="cell d2"><span class="tag">소녀</span><canvas id="girlCv" width="400" height="400"></canvas></div>
+    <div class="cell" id="meCell"><span class="tag">Me (MediaPipe)</span><canvas id="meCv" width="360" height="360"></canvas></div>
+    <div class="cell d3"><span class="tag">Bust M</span><canvas id="markCv"></canvas></div>
+    <div class="cell d2"><span class="tag">Boy</span><canvas id="boyCv" width="400" height="400"></canvas></div>
+    <div class="cell d3"><span class="tag">Bust F</span><canvas id="claireCv"></canvas></div>
+    <div class="cell d2"><span class="tag">Girl</span><canvas id="girlCv" width="400" height="400"></canvas></div>
   </div>
   <div class="row">
-    <button id="mirrorBtn">미러링 시작</button>
-    <button class="alt" id="recBtn">5칸 녹화</button>
+    <button id="mirrorBtn">Start mirroring</button>
+    <button class="alt" id="recBtn">Record all five</button>
     <label style="display:flex;align-items:center;gap:6px;font-size:.9rem;color:#9a9ab0;cursor:pointer">
-      <input type="checkbox" id="headMove"> 머리 움직임
+      <input type="checkbox" id="headMove"> Head movement
     </label>
-    <a class="link" href="./">← 스튜디오</a>
+    <a class="link" href="./">← Studio</a>
   </div>
-  <div id="status">로딩 중…</div>
+  <div id="status">Loading…</div>
 </main>
 
 <script src="avatar_core.js"></script>
@@ -58,6 +58,7 @@ import { MeshoptDecoder } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examp
 
 const $ = id => document.getElementById(id);
 const setStatus = AvatarCore.bindStatus($("status"));
+AvatarCore.setLocale("en");
 let smooth = {};
 const W = k => smooth[k] || 0;
 const blinker = AvatarCore.makeBlink({ autoBlink: () => true, intervalMs: () => 3800, duration: 145, jitter: 0.7 });
@@ -71,8 +72,8 @@ function drawMe() {
   meCtx.fillStyle = "#0d0d12"; meCtx.fillRect(0, 0, w, h);
   if (!mirror.on || !d.video || d.video.readyState < 2) {
     meCtx.fillStyle = "#7a7a90"; meCtx.font = "15px sans-serif"; meCtx.textAlign = "center";
-    meCtx.fillText("미러링을 시작하면", w / 2, h / 2 - 12);
-    meCtx.fillText("내 얼굴이 여기 표시됩니다", w / 2, h / 2 + 14);
+    meCtx.fillText("Start mirroring to see", w / 2, h / 2 - 12);
+    meCtx.fillText("your own face here", w / 2, h / 2 + 14);
     return;
   }
   meCtx.save(); meCtx.scale(-1, 1); meCtx.drawImage(d.video, -w, 0, w, h); meCtx.restore();   // 거울
@@ -100,9 +101,9 @@ function make3D(canvas, glbName) {
     // 석고 헤드 2종만 쓰므로 eyeSpheres·headFrac 고정 (코어가 모프 수집·눈알·프레이밍까지)
     mounted = AvatarCore.mountHead3D(THREE, { group, camera, gltf: g,
       cfg: { eyeSpheres: true, headFrac: 1 } });
-    if (!mounted) { setStatus(glbName + ": 모프타깃 메시 없음", true); return; }
+    if (!mounted) { setStatus(glbName + ": no morph-target mesh", true); return; }
     ready();
-  }, undefined, e => setStatus(glbName + " 로드 실패: " + e, true));
+  }, undefined, e => setStatus(glbName + " failed to load: " + e, true));
   const gaze = AvatarCore.makeGaze({ gx: 0, gy: 0 }, { mulX: 0.8, mulY: 0.5 });
   function resize() { const r = canvas.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = 1; camera.updateProjectionMatrix(); }
   new ResizeObserver(resize).observe(canvas);
@@ -144,7 +145,7 @@ const heads = { mark: make3D($("markCv"), "mark"), claire: make3D($("claireCv"),
 const chars = { boy: make2D($("boyCv"), "boy"), girl: make2D($("girlCv"), "girl") };
 
 let readyN = 0;
-function ready() { if (++readyN >= 4) setStatus("미러링 시작을 누르고 카메라를 허용하세요 (또는 자동 시연 대기)"); }
+function ready() { if (++readyN >= 4) setStatus("Hit Start mirroring and allow camera access (or just watch the auto demo)"); }
 
 // ---------- 자동 쇼케이스 (미러링 전 시연) ----------
 const POSES = [
@@ -154,7 +155,7 @@ const POSES = [
 ];
 let demoTarget = null, demoTimer = null; const demoW = {};
 const showcase = AvatarCore.makeShowcase(pose => new Promise(res => { demoTarget = pose; setTimeout(() => { demoTarget = null; setTimeout(res, 320); }, 1300); }), POSES);
-function scheduleDemo(d) { clearTimeout(demoTimer); demoTimer = setTimeout(() => { if (mirror.on || showcase.running) return; setStatus("자동 시연 중 — 미러링으로 직접 조종"); showcase.play().then(() => { if (!mirror.on) scheduleDemo(4000); }); }, d); }
+function scheduleDemo(d) { clearTimeout(demoTimer); demoTimer = setTimeout(() => { if (mirror.on || showcase.running) return; setStatus("Auto demo running — start mirroring to drive it yourself"); showcase.play().then(() => { if (!mirror.on) scheduleDemo(4000); }); }, d); }
 function demoApply() {
   if (mirror.on) { for (const k in demoW) delete demoW[k]; return; }
   for (const k in demoW) if (!demoTarget || !(k in demoTarget)) demoW[k] *= 0.85;
@@ -164,10 +165,10 @@ function demoApply() {
 scheduleDemo(2200);
 
 $("mirrorBtn").onclick = () => {
-  if (mirror.on) { mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "미러링 시작"; scheduleDemo(2000); return; }
+  if (mirror.on) { mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "Start mirroring"; scheduleDemo(2000); return; }
   showcase.stop(); clearTimeout(demoTimer);
-  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "미러링 종료"; })
-    .catch(e => { mirror.stop(); setStatus("미러링 실패: " + e.message, true); });
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "Stop mirroring"; })
+    .catch(e => { mirror.stop(); setStatus("Mirroring failed: " + e.message, true); });
 };
 
 // ---------- 렌더 루프 ----------
@@ -203,7 +204,7 @@ function compositeRec() {
 $("recBtn").onclick = () => {
   if (recorder) { recorder.stop(); return; }
   const mime = ["video/webm;codecs=vp9", "video/webm"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
-  if (!mime) { setStatus("이 브라우저는 WebM 녹화 미지원", true); return; }
+  if (!mime) { setStatus("This browser can't record WebM", true); return; }
   recCanvas = document.createElement("canvas"); recCanvas.width = 1200; recCanvas.height = 800;
   recCtx = recCanvas.getContext("2d");
   const chunks = [];
@@ -213,10 +214,10 @@ $("recBtn").onclick = () => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(chunks, { type: "video/webm" })); a.download = "drawface-5.webm"; a.click();
     URL.revokeObjectURL(a.href); recorder = null; recCtx = null; recCanvas = null;
-    $("recBtn").classList.remove("on"); $("recBtn").textContent = "5칸 녹화"; setStatus("녹화 완료 — WebM 저장됨");
+    $("recBtn").classList.remove("on"); $("recBtn").textContent = "Record all five"; setStatus("Recording finished — WebM saved");
   };
-  recorder.start(); $("recBtn").classList.add("on"); $("recBtn").textContent = "녹화 종료";
-  setStatus("녹화 중 — 5칸 합성 저장 (웹캠 원본은 미포함)");
+  recorder.start(); $("recBtn").classList.add("on"); $("recBtn").textContent = "Stop recording";
+  setStatus("Recording — saving the five-panel composite (the raw webcam feed is never included)");
 };
 </script>
 </body>

@@ -87,14 +87,14 @@ async function openManualOnboarding(page) {
   // supported by createImageBitmap across the Chromium versions used in CI.
   await page.locator("#fileInput").setInputFiles("docs/characters/boy/base.png");
   await expect(page.locator("#onboardDlg")).toBeVisible();
-  await expect(page.locator("#onboardStatus")).toContainText("클릭 1/4");
+  await expect(page.locator("#onboardStatus")).toContainText("Click 1/4");
   const canvas = await page.locator("#onboardCanvas").boundingBox();
   if (!canvas) throw new Error("onboarding canvas is not visible");
   for (const point of [{ x: 166, y: 190 }, { x: 346, y: 190 }, { x: 200, y: 295 }, { x: 320, y: 345 }]) {
     const at = pagePoint(canvas, point);
     await page.mouse.click(at.x, at.y);
   }
-  await expect(page.locator("#onboardStatus")).toContainText("모서리로 크기 조절");
+  await expect(page.locator("#onboardStatus")).toContainText("drag a corner to resize");
   // showModal() centres the dialog. The longer post-click help text can change
   // its height, so capture the canvas position again before drag coordinates.
   const settledCanvas = await page.locator("#onboardCanvas").boundingBox();
@@ -150,7 +150,7 @@ test("MediaPipe load failure exposes a retry button", async ({ page }) => {
   await page.locator("#startBtn").click();
   const retry = page.locator("#trackerRetryBtn");
   await expect(retry).toBeVisible();
-  await expect(page.locator("#status")).toContainText("추적 모델 로딩 실패");
+  await expect(page.locator("#status")).toContainText("Failed to load the tracking model");
   const firstAttempt = cdnRequests;
   await retry.click();
   await expect.poll(() => cdnRequests).toBeGreaterThan(firstAttempt);

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DrawFace Live — 표정 미러링</title>
+<title>DrawFace Live — Face Mirroring</title>
 <!-- 메인 = 미러링 스튜디오: 들어가자마자 시연. 캐릭터 선택(석고상 3D 기본 / 소년 2D),
      내 손그림은 draw.html(기존 앱 보존). mark 헤드는 NVIDIA Maya-ACE(MIT) 파생 —
      assets3d/LICENSE-mark.txt 고지 포함으로 재배포 조건 충족. -->
@@ -57,7 +57,7 @@
 </head>
 <body>
 <main>
-  <h1>DrawFace Live — 웹캠 표정 미러링</h1>
+  <h1>DrawFace Live — Webcam Face Mirroring</h1>
 
   <div class="duo">
     <div class="stage" id="stage3d"><canvas id="cv3d"></canvas></div>
@@ -69,33 +69,33 @@
   </div>
 
   <div class="row">
-    <button id="mirrorBtn">미러링 시작</button>
-    <button class="alt" id="panelBtn">분석</button>
-    <button class="alt" id="recBtn" title="캐릭터 캔버스만 WebM 영상으로 저장">녹화</button>
+    <button id="mirrorBtn">Start mirroring</button>
+    <button class="alt" id="panelBtn">Analysis</button>
+    <button class="alt" id="recBtn" title="Save just the character canvas as a WebM video">Record</button>
     <select id="charSel">
-      <option value="mark">석고상 남성 (NVIDIA mark · 3D)</option>
-      <option value="claire">석고상 여성 (NVIDIA claire · 3D)</option>
-      <option value="rpmA">아바타 A (Ready Player Me · 3D)</option>
-      <option value="rpmB">아바타 B (Ready Player Me · 3D)</option>
-      <option value="boy">소년 (그래픽 · 2D)</option>
-      <option value="girl">소녀 (그래픽 · 2D)</option>
+      <option value="mark">Plaster bust, male (NVIDIA mark · 3D)</option>
+      <option value="claire">Plaster bust, female (NVIDIA claire · 3D)</option>
+      <option value="rpmA">Avatar A (Ready Player Me · 3D)</option>
+      <option value="rpmB">Avatar B (Ready Player Me · 3D)</option>
+      <option value="boy">Boy (graphic · 2D)</option>
+      <option value="girl">Girl (graphic · 2D)</option>
     </select>
     <label style="display:flex;align-items:center;gap:6px;font-size:.9rem;color:#9a9ab0;cursor:pointer">
-      <input type="checkbox" id="headMove"> 머리 움직임
+      <input type="checkbox" id="headMove"> Head movement
     </label>
-    <a class="link" href="combo.html" style="margin-left:auto">5인 동시</a>
-    <a class="link" href="draw.html" style="margin-left:12px">내 손그림 →</a>
+    <a class="link" href="combo.html" style="margin-left:auto">Five at once</a>
+    <a class="link" href="draw.html" style="margin-left:12px">My own drawing →</a>
   </div>
 
-  <div id="status">모델 로딩 중…</div>
+  <div id="status">Loading model…</div>
 
   <footer>
-    전부 브라우저 안에서 처리 — 영상은 어디로도 전송되지 않습니다.
-    초상화·실사급 일러스트는 로컬 GPU 트랙(LivePortrait 30fps) —
-    <a href="illust.html">결과 보기</a> ·
-    <a href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">실측 근거</a>.
-    mark·claire 헤드 © NVIDIA, <a href="assets3d/LICENSE-mark.txt">MIT (Maya-ACE)</a> 파생.
-    말하는 아바타는 <a href="https://ingon1026.github.io/talking-drawing-avatar/">talking-drawing-avatar</a>.
+    Everything runs inside your browser — no video is ever sent anywhere.
+    Portraits and photoreal illustrations run on the local GPU track (LivePortrait, 30 fps) —
+    <a href="illust.html">see the results</a> ·
+    <a href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">measurements</a>.
+    mark and claire heads © NVIDIA, derived from <a href="assets3d/LICENSE-mark.txt">MIT (Maya-ACE)</a>.
+    For a talking avatar, see <a href="https://ingon1026.github.io/talking-drawing-avatar/">talking-drawing-avatar</a>.
   </footer>
 </main>
 
@@ -122,14 +122,15 @@ try {
   let detail = e.message;
   try {
     const r = await fetch("./vendor/GLTFLoader.js?v=2", { cache: "reload" });
-    detail += ` (로컬 fetch: HTTP ${r.status})`;
-  } catch (fe) { detail += ` (로컬 fetch: ${fe.message})`; }
-  document.getElementById("status").textContent = "3D 모듈 로드 실패: " + detail;
+    detail += ` (local fetch: HTTP ${r.status})`;
+  } catch (fe) { detail += ` (local fetch: ${fe.message})`; }
+  document.getElementById("status").textContent = "Failed to load the 3D modules: " + detail;
   throw e;
 }
 
 const $ = id => document.getElementById(id);
 const setStatus = AvatarCore.bindStatus($("status"));
+AvatarCore.setLocale("en");
 
 // ---- OBS 브라우저 소스 모드 (?clean=1) ----
 // UI 숨김 + 투명 배경으로 캐릭터만 남긴다. ?auto=1 이면 로드 직후 미러링 자동 시작
@@ -147,13 +148,13 @@ const blinker = AvatarCore.makeBlink({ autoBlink: () => true, intervalMs: () => 
 const mirror = AvatarCore.makeMirror({ onStatus: setStatus });
 $("mirrorBtn").onclick = () => {
   if (mirror.on) {
-    mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "미러링 시작";
+    mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "Start mirroring";
     scheduleDemo(3000);   // 미러링 끝나면 유휴 시연 재개
     return;
   }
   showcase.stop(); clearTimeout(demoTimer);   // 직접 조종 시작 — 시연 즉시 중단
-  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "미러링 종료"; panel.classList.add("on"); })
-    .catch(e => { mirror.stop(); $("mirrorBtn").classList.remove("on"); setStatus("미러링 실패: " + e.message, true); });
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "Stop mirroring"; panel.classList.add("on"); })
+    .catch(e => { mirror.stop(); $("mirrorBtn").classList.remove("on"); setStatus("Mirroring failed: " + e.message, true); });
 };
 
 // ================= 자동 쇼케이스: 카메라 허용 전에도 살아있는 데모 =================
@@ -178,9 +179,9 @@ function scheduleDemo(delay) {
   clearTimeout(demoTimer);
   demoTimer = setTimeout(() => {
     if (mirror.on || showcase.running) return;
-    setStatus("자동 시연 중 — 미러링 시작을 누르면 직접 조종할 수 있어요");
+    setStatus("Auto demo running — hit Start mirroring to drive it yourself");
     showcase.play().then(() => {
-      if (!mirror.on) { setStatus("미러링 시작을 누르고 카메라를 허용해주세요"); scheduleDemo(5000); }
+      if (!mirror.on) { setStatus("Hit Start mirroring and allow camera access"); scheduleDemo(5000); }
     });
   }, delay);
 }
@@ -209,7 +210,7 @@ function stopRec() {
 $("recBtn").onclick = () => {
   if (recorder) { stopRec(); return; }
   const mime = ["video/webm;codecs=vp9", "video/webm"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
-  if (!mime) { setStatus("이 브라우저는 WebM 녹화를 지원하지 않습니다", true); return; }
+  if (!mime) { setStatus("This browser can't record WebM", true); return; }
   let stream;
   if (is3D()) stream = canvas3d.captureStream(30);   // mark·claire 둘 다 canvas3d 에 렌더
   else {
@@ -227,12 +228,12 @@ $("recBtn").onclick = () => {
     a.click();
     URL.revokeObjectURL(a.href);
     recorder = null; recCv = null;
-    $("recBtn").classList.remove("on"); $("recBtn").textContent = "녹화";
-    setStatus("녹화 완료 — WebM 다운로드를 시작했습니다");
+    $("recBtn").classList.remove("on"); $("recBtn").textContent = "Record";
+    setStatus("Recording finished — the WebM download has started");
   };
   recorder.start();
-  $("recBtn").classList.add("on"); $("recBtn").textContent = "녹화 종료";
-  setStatus("녹화 중 — 캐릭터 캔버스만 저장됩니다 (웹캠 화면은 포함 안 됨)");
+  $("recBtn").classList.add("on"); $("recBtn").textContent = "Stop recording";
+  setStatus("Recording — only the character canvas is saved (the webcam feed is never included)");
 };
 
 // ================= 3D: 석고상 (mark) =================
@@ -262,12 +263,12 @@ gltfLoader.setMeshoptDecoder(MeshoptDecoder);
 // 이미 three.js·디코더를 받아오는 CDN 이라 도달성·CORS 가 검증돼 있다(models.readyplayer.me 는 실패).
 const GH = "https://cdn.jsdelivr.net/gh/";
 const HEADS = {
-  mark:   { url: "assets3d/mark.glb?v=3",   label: "석고상 남성", eyeSpheres: true,  headFrac: 1 },
-  claire: { url: "assets3d/claire.glb?v=3", label: "석고상 여성", eyeSpheres: true,  headFrac: 1 },
+  mark:   { url: "assets3d/mark.glb?v=3",   label: "Plaster bust, male", eyeSpheres: true,  headFrac: 1 },
+  claire: { url: "assets3d/claire.glb?v=3", label: "Plaster bust, female", eyeSpheres: true,  headFrac: 1 },
   rpmA:   { url: GH + "AgoraIO-Community/agora-mediapipe-readyplayerme@c1aeedbd0501c1e1ad013947bf258639baf6085f/public/6644d711e53a2fb55928d72e.glb",
-            label: "아바타 A", eyeSpheres: false, headFrac: 0.22 },
+            label: "Avatar A", eyeSpheres: false, headFrac: 0.22 },
   rpmB:   { url: GH + "met4citizen/TalkingHead@eed58d198076a7e1e825f804802921c4d3804d46/avatars/brunette.glb",
-            label: "아바타 B", eyeSpheres: false, headFrac: 0.22 },
+            label: "Avatar B", eyeSpheres: false, headFrac: 0.22 },
 };
 const glbCache = {};
 let loaded3D = null;   // 현재 화면에 올라간 3D 헤드(로드 실패 시 되돌리기용)
@@ -275,17 +276,17 @@ function load3D(name) {
   const cfg = HEADS[name];
   const done = g => {
     const r = AvatarCore.mountHead3D(THREE, { group, camera, gltf: g, cfg, prev: mounted });
-    if (!r) { setStatus(cfg.label + ": 표정 모프타깃이 없는 모델입니다", true); return; }
+    if (!r) { setStatus(cfg.label + ": this model has no expression morph targets", true); return; }
     mounted = r;
     loaded3D = name;   // 캐시 히트 포함, 화면에 실제로 올라간 시점에 확정
-    setStatus("미러링 시작을 누르고 카메라를 허용해주세요");
+    setStatus("Hit Start mirroring and allow camera access");
   };
   if (glbCache[name]) return done(glbCache[name]);
-  setStatus(cfg.label + " 불러오는 중…");
+  setStatus(cfg.label + " — loading…");
   gltfLoader.load(cfg.url, g => { glbCache[name] = g; done(g); },
     undefined, () => {
       // 실패 시 화면엔 직전 헤드가 남으므로 드롭다운도 되돌려 UI 와 화면을 일치시킨다
-      setStatus(cfg.label + " 를 불러오지 못했습니다 — 네트워크를 확인해주세요", true);
+      setStatus(cfg.label + " failed to load — check your network connection", true);
       $("charSel").value = loaded3D || "mark";
     });
 }
@@ -349,7 +350,7 @@ $("charSel").onchange = () => {
   $("stage3d").style.display = is3D() ? "" : "none";
   $("stage2d").style.display = is3D() ? "none" : "";
   if (is3D()) load3D(mode());
-  else loadChar(mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));
+  else loadChar(mode()).catch(e => setStatus("Character failed to load: " + e.message, true));
 };
 // 딥링크: ?char=mark|claire|boy|girl 로 진입 (draw.html·boy.html 이 사용)
 const deep = Q.get("char");
@@ -358,8 +359,8 @@ $("charSel").onchange();   // 현재 selection 을 한 번 로드 (기본 mark �
 // ?auto=1 — OBS 처럼 클릭이 불가능한 환경에서 미러링 자동 시작 (권한 거부 시 조용히 무시)
 if (Q.get("auto") === "1") {
   showcase.stop(); clearTimeout(demoTimer);
-  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "미러링 종료"; })
-    .catch(() => setStatus("자동 미러링 실패 — 카메라 권한을 확인해주세요", true));
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "Stop mirroring"; })
+    .catch(() => setStatus("Auto-mirroring failed — check the camera permission", true));
 }
 
 // ================= 렌더 루프 (활성 캐릭터만 그림) =================
@@ -405,7 +406,7 @@ function render(now) {
 }
 
 warp.init();
-loadChar(is3D() ? "boy" : mode()).catch(e => setStatus("캐릭터 로드 실패: " + e.message, true));   // 2D 프리로드(3D 진입 시 boy 워밍, 2D 진입 시 활성 캐릭터 유지)
+loadChar(is3D() ? "boy" : mode()).catch(e => setStatus("Character failed to load: " + e.message, true));   // 2D 프리로드(3D 진입 시 boy 워밍, 2D 진입 시 활성 캐릭터 유지)
 requestAnimationFrame(render);
 </script>
 </body>

@@ -42,23 +42,32 @@ jobs:
           mkdir -p _space
           cp -r docs/. _space/
           # Space 는 루트 README.md 의 YAML 로 설정된다. docs/ 에는 없으므로 여기서 만든다.
-          # emoji·colorFrom 은 HF 카드 썸네일용 플랫폼 메타데이터다 — 페이지 UI 와 무관.
+          # 카드가 HF 에서 어떻게 보이는지를 정하는 플랫폼 메타데이터다 — 페이지 UI 와 무관.
+          # emoji 는 넣지 않는다(기본 아이콘), 그라디언트도 단색으로 — 장식이 결과물보다 튀지 않게.
+          # HF 방문자는 국제 사용자라 Space 문서는 영문으로 쓴다.
           cat > _space/README.md <<'EOF'
           ---
           title: DrawFace Live
-          emoji: 🪞
           colorFrom: gray
-          colorTo: indigo
+          colorTo: gray
           sdk: static
           app_file: index.html
           pinned: false
-          short_description: 웹캠 표정을 손그림·3D 캐릭터가 실시간으로 따라 합니다
+          short_description: Real-time facial expression mirroring onto hand-drawn and 3D characters
           ---
 
-          웹캠 앞 표정을 그림이 그대로 따라 하는 데모. 얼굴 인식(MediaPipe)부터 렌더까지
-          **전부 브라우저 안에서** 처리되고 영상은 어디로도 전송되지 않습니다.
+          Your webcam expression, mirrored onto a drawing — in real time.
 
-          소스와 기술 문서: https://github.com/ingon1/drawface-live
+          Face tracking (MediaPipe Face Landmarker), retargeting and rendering all run
+          **in the browser**. No frames leave your machine; there is no server.
+
+          - **Mirroring studio** (`index.html`) — 3D plaster heads and 2D characters
+          - **Your own drawing** (`draw.html`) — four clicks to rig a scribble
+          - **Illustration track** (`illust.html`) — pre-rendered LivePortrait results.
+            That track needs a local GPU (TensorRT), so it cannot run here — the page shows
+            measured results instead, including the artwork it fails on.
+
+          Source and technical notes: https://github.com/ingon1026/drawface-live
           EOF
 
       - name: hf CLI 설치

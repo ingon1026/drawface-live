@@ -1,0 +1,95 @@
+name: HF Space
+
+# docs/ 를 Hugging Face Space 로 미러링한다. Pages 와 같은 파일을 같은 커밋에서 올려,
+# 배포처가 둘이어도 손으로 복사할 일이 없게 한다 — 손 복사는 반드시 어긋난다.
+#
+# 준비물 두 가지 (없으면 이 워크플로는 통째로 건너뛴다):
+#   1. HF 에 Space 생성 — sdk 는 static. 기본 대상은 아래 HF_SPACE.
+#   2. HF write 토큰을 이 리포 Secrets 에 HF_TOKEN 으로 등록.
+# Space 이름이 다르면 리포 Variables 에 HF_SPACE 를 넣으면 그쪽이 우선한다.
+
+on:
+  push:
+    paths:
+      - docs/**
+      - .github/workflows/hf-space.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 토큰 확인
+        id: gate
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN 이 없어 건너뜁니다 — 설정 방법은 이 워크플로 상단 주석 참고." >&2
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Space 페이로드 구성
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          mkdir -p _space
+          cp -r docs/. _space/
+          # Space 는 루트 README.md 의 YAML 로 설정된다. docs/ 에는 없으므로 여기서 만든다.
+          # emoji·colorFrom 은 HF 카드 썸네일용 플랫폼 메타데이터다 — 페이지 UI 와 무관.
+          cat > _space/README.md <<'EOF'
+          ---
+          title: DrawFace Live
+          emoji: 🪞
+          colorFrom: gray
+          colorTo: indigo
+          sdk: static
+          app_file: index.html
+          pinned: false
+          short_description: 웹캠 표정을 손그림·3D 캐릭터가 실시간으로 따라 합니다
+          ---
+
+          웹캠 앞 표정을 그림이 그대로 따라 하는 데모. 얼굴 인식(MediaPipe)부터 렌더까지
+          **전부 브라우저 안에서** 처리되고 영상은 어디로도 전송되지 않습니다.
+
+          소스와 기술 문서: https://github.com/ingon1026/drawface-live
+          EOF
+
+      - name: hf CLI 설치
+        if: steps.gate.outputs.ready == 'true'
+        run: pip install --quiet --upgrade huggingface_hub
+
+      - name: Space 로 업로드
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE || 'ingon1026/drawface-live' }}
+        run: |
+          # --delete="*" 라야 리포에서 지운 파일이 Space 에서도 사라진다. 없으면 삭제분이
+          # 영영 남아, 지운 자산을 참조하는 페이지가 Space 에서만 계속 동작하는 상태가 된다.
+          hf upload "$HF_SPACE" ./_space . \
+            --repo-type=space --delete="*" \
+            --commit-message="sync from ${{ github.sha }}"
+
+      - name: 배포 확인
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          HF_SPACE: ${{ vars.HF_SPACE || 'ingon1026/drawface-live' }}
+        run: |
+          # 업로드 성공이 곧 서빙 성공은 아니다 — 실제로 200 이 오는지 본다.
+          sub=$(echo "$HF_SPACE" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+          url="https://$sub.hf.space/"
+          echo "확인 대상: $url"
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)
+            [ "$code" = "200" ] && { echo "✔ $url 서빙 중"; exit 0; }
+            echo "  HTTP $code — 빌드 대기 ($i/12)"; sleep 15
+          done
+          echo "✘ 3분 안에 200 을 못 받았습니다. Space 빌드 로그를 확인하세요: https://huggingface.co/spaces/$HF_SPACE" >&2
+          exit 1

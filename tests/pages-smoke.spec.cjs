@@ -35,3 +35,22 @@ test("published GitHub Pages serves the current draw UI", async ({ page }) => {
 
   throw new Error(`GitHub Pages did not serve the current draw UI within 210 seconds: ${lastError?.message}`);
 });
+
+// illust.html 은 JS 없는 정적 쇼케이스라 실패 모드가 하나뿐이다 — 배포 후 미디어가 404.
+// 페이지만 200 이면 통과해 버리므로 <video>/<img> 의 실제 응답 코드까지 본다.
+test("published Pages serves the illustration showcase with its media", async ({ page, request }) => {
+  const illustUrl = new URL("illust.html", pagesUrl).toString();
+  const response = await page.goto(illustUrl, { waitUntil: "domcontentloaded" });
+  expect(response?.status(), "illust.html").toBe(200);
+
+  const sources = await page.locator("video[src], img[src]").evaluateAll(
+    (els) => els.map((el) => el.getAttribute("src")),
+  );
+  expect(sources.length, "showcase media elements").toBeGreaterThan(0);
+
+  for (const src of sources) {
+    const mediaUrl = new URL(src, illustUrl).toString();
+    const media = await request.get(mediaUrl);
+    expect(media.status(), src).toBe(200);
+  }
+});

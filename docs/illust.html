@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>일러스트 트랙 — DrawFace Live</title>
+<!-- 정적 쇼케이스. 이 페이지는 추론을 돌리지 않는다 — 로컬 GPU 에서 미리 렌더한 결과만 재생한다.
+     실시간 트랙(index.html)과 달리 LivePortrait 는 TensorRT + GPU 가 필요해 웹에 못 올린다.
+     핵심 메시지는 "되는 그림 / 안 되는 그림" 대조다. 성공 사례만 걸면 다음 사람이
+     손그림에 이 트랙을 붙였다가 같은 실패를 반복한다. -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    font-family: 'Pretendard', 'Noto Sans KR', sans-serif; background: #16161d; color: #e8e8ef;
+  }
+  main { width: min(900px, 96vw); padding: 24px 0 48px; }
+  h1 { font-size: 1.25rem; font-weight: 700; margin: 12px 0 4px; }
+  h2 { font-size: 1.02rem; font-weight: 700; margin: 34px 0 10px; }
+  p { line-height: 1.7; color: #c3c3d2; font-size: .93rem; margin: 8px 0; }
+  .lede { color: #9a9ab0; font-size: .9rem; margin-bottom: 6px; }
+  .tag { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: .76rem; font-weight: 700; }
+  .tag.ok { background: #17402c; color: #7ee0a8; }
+  .tag.no { background: #431c22; color: #ff9aa5; }
+  .duo { display: flex; gap: 14px; flex-wrap: wrap; }
+  figure { flex: 1 1 300px; margin: 0; }
+  figure video, figure img {
+    width: 100%; display: block; border-radius: 14px; border: 1px solid #2a2a35; background: #0d0d12;
+  }
+  figcaption { color: #9a9ab0; font-size: .82rem; margin-top: 7px; line-height: 1.55; }
+  .card { border: 1px solid #2a2a35; border-radius: 14px; padding: 14px 16px; background: #1b1b23; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; margin-top: 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a35; }
+  th { color: #9a9ab0; font-weight: 600; }
+  td strong { color: #7ee0a8; }
+  a { color: #8a8aff; }
+  .row { display: flex; gap: 8px; margin-top: 18px; align-items: center; flex-wrap: wrap; }
+  .btn { padding: 11px 16px; border-radius: 10px; background: #5b8cff; color: #fff;
+         font-size: .93rem; font-weight: 600; text-decoration: none; }
+  .btn.alt { background: #2a2a35; color: #e8e8ef; }
+  footer { margin-top: 30px; font-size: .78rem; color: #66667a; line-height: 1.7; }
+  footer a { color: #8a8aff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🖼 일러스트 트랙 — 그림이 내 표정을 따라 한다</h1>
+  <p class="lede">FasterLivePortrait · 로컬 GPU 전용 · 아래는 미리 렌더한 결과입니다</p>
+
+  <p>
+    이 저장소에는 얼굴을 움직이는 방법이 <strong>두 가지</strong> 있습니다. 대상에 따라 되는 쪽이 갈립니다 —
+    같은 모델인데 그림 종류에 따라 결과가 정반대라, 실측으로 확인한 뒤 트랙을 나눴습니다.
+  </p>
+
+  <h2><span class="tag ok">되는 것</span> &nbsp;표준 비율 일러스트 · 명화</h2>
+  <div class="duo">
+    <figure>
+      <video src="img/flp/vermeer.mp4" autoplay loop muted playsinline preload="metadata"></video>
+      <figcaption>
+        베르메르 〈진주 귀걸이를 한 소녀〉(1665, 퍼블릭 도메인).
+        붓질과 캔버스 균열이 그대로 남은 채 고개와 표정만 움직입니다.
+      </figcaption>
+    </figure>
+    <figure>
+      <img src="img/flp_illust_ok.png" alt="벡터 일러스트를 구동한 6프레임 — 선과 채색이 유지된 채 표정만 바뀐다">
+      <figcaption>
+        벡터 일러스트 6프레임. 선과 채색이 재생성되지 않아 원래 화풍이 유지됩니다.
+      </figcaption>
+    </figure>
+  </div>
+
+  <h2><span class="tag no">안 되는 것</span> &nbsp;손그림 · 낙서 · 치비</h2>
+  <figure style="max-width:660px">
+    <img src="img/flp/fail_handdrawn.png" alt="손그림에 LivePortrait 를 적용한 결과 — 얼굴이 검출되지 않아 세 프레임 모두 변화가 없다">
+    <figcaption>
+      같은 파이프라인, 같은 웹캠 입력. 손그림은 <strong>얼굴 검출 자체가 실패</strong>해 아무 일도 일어나지 않고,
+      검출을 강제하면 머리 전체가 뭉개집니다(스미어링). 흰 종이 위 선화가 학습 분포 밖이기 때문입니다.
+    </figcaption>
+  </figure>
+  <p>
+    그래서 손그림은 이 트랙이 아니라 <a href="./">ARAP 워프 미러링</a>이 담당합니다.
+    원본 획을 삼각형 그물로 변형하는 방식이라 없는 픽셀을 만들지 않고, 브라우저에서 실시간으로 돕니다.
+  </p>
+
+  <h2>왜 웹에서 직접 못 돌리나</h2>
+  <div class="card">
+    <table>
+      <tr><th>백엔드</th><th>프레임당</th><th>체감</th></tr>
+      <tr><td>TensorRT (RTX 4070 Ti)</td><td><strong>27–37 ms</strong></td><td>실시간 (약 30fps)</td></tr>
+      <tr><td>ONNX GPU (같은 카드)</td><td>118–124 ms</td><td>약 8fps — 실시간 아님</td></tr>
+    </table>
+    <p style="margin-top:12px">
+      실시간은 <strong>TensorRT 전용 숫자</strong>입니다. 그런데 TensorRT 엔진은 빌드한 GPU와 버전에 묶여
+      다른 장비에서 로드되지 않습니다. 무료 호스팅은 CPU라 더 느리고, 웹캠 프레임을 서버까지 왕복시키면
+      "따라 한다"는 체감도 무너집니다. 그래서 이 페이지는 <strong>미리 렌더한 결과</strong>만 보여줍니다.
+    </p>
+  </div>
+
+  <div class="row">
+    <a class="btn" href="./">🪞 실시간 미러링 해보기</a>
+    <a class="btn alt" href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">📄 직접 돌려보는 법</a>
+  </div>
+
+  <footer>
+    영상은 로컬 GPU(RTX 4070 Ti, TensorRT)에서 미리 렌더한 것으로, 이 페이지는 추론을 돌리지 않습니다.
+    소리는 담기지 않았습니다.<br>
+    원본 그림 — 베르메르 〈진주 귀걸이를 한 소녀〉는 퍼블릭 도메인이며
+    <a href="https://github.com/warmshao/FasterLivePortrait">FasterLivePortrait</a>(MIT)의 예제 이미지입니다.
+    돼지 그림은 직접 그린 것입니다.<br>
+    재현 방법과 로컬 패치는 <a href="https://github.com/ingon1026/drawface-live/blob/main/THIRD_PARTY.md">THIRD_PARTY.md</a>에 있습니다.
+  </footer>
+</main>
+</body>
+</html>

@@ -232,6 +232,8 @@ PYTHONPATH=. .venv/bin/python scripts/warp_demo.py --image <그림.png> --out ou
 
 ```bash
 bash scripts/setup.sh                          # venv + 모델 + 스프라이트 (idempotent)
+# 스프라이트(돼지 예시 캐릭터)는 이 리포에 커밋돼 있지 않지만 setup.sh 가 자매 리포에서
+# 받아옵니다. 자기 그림을 쓰려면: PIGSRC=<내_그림_폴더> bash scripts/setup.sh
 PYTHONPATH= .venv/bin/python -m app.ui         # 컨트롤 패널 — 스프라이트 모드 (캐릭터·카메라 선택)
 PYTHONPATH= .venv/bin/python -m app.onboard <그림> <이름>   # 4클릭 온보딩 도구
 

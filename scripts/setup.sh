@@ -11,9 +11,40 @@ PY="$VENV/bin/python"
 MPMODEL="$CKPT/mediapipe/face_landmarker.task"
 MPURL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
 SPRITES="$ROOT/assets/sprites/pig"
-# 스프라이트는 사용자가 직접 그린 그림에서 파생돼 커밋되지 않는다(.gitignore).
-# 다른 머신에서는 PIGSRC 로 자기 그림 경로를 넘긴다: PIGSRC=~/art/pig ./scripts/setup.sh
+# 스프라이트는 사용자가 직접 그린 그림에서 파생돼 이 리포에는 커밋되지 않는다(.gitignore).
+# 원본은 자매 리포에 공개돼 있으므로 로컬 체크아웃이 없으면 거기서 내려받는다.
+# 자기 그림을 쓰려면: PIGSRC=~/art/pig ./scripts/setup.sh
 PIGSRC="${PIGSRC:-$HOME/face/assets_characters/pig}"
+SPRITE_REPO="ingon1026/talking-drawing-avatar"
+SPRITE_PATH="assets_characters/pig"
+
+# 자매 리포에서 스프라이트 한 벌을 받아온다. 파일 목록은 GitHub contents API 로 나열한다 —
+# 하드코딩하면 원본에 파일이 늘어날 때 조용히 어긋난다(manifest.json 은 설정만 담고 목록이 없다).
+# 임시 디렉터리에 다 받은 뒤 옮겨, 중간에 끊겨도 반쯤 채워진 상태가 남지 않게 한다.
+fetch_sprites() {
+  [ -x "$PY" ] || return 1
+  local tmp names
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  curl -fsSL "https://api.github.com/repos/$SPRITE_REPO/contents/$SPRITE_PATH" -o "$tmp/listing.json" || return 1
+  names="$(PYTHONPATH= "$PY" -c '
+import json, sys
+try:
+    items = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+for it in items:
+    n = it.get("name", "")
+    if it.get("type") == "file" and (n.endswith(".png") or n == "manifest.json"):
+        print(n)
+' "$tmp/listing.json")" || return 1
+  [ -n "$names" ] || return 1
+  while read -r n; do
+    curl -fsSL -o "$tmp/$n" "https://raw.githubusercontent.com/$SPRITE_REPO/main/$SPRITE_PATH/$n" || return 1
+  done <<<"$names"
+  mkdir -p "$SPRITES"
+  mv "$tmp"/*.png "$tmp/manifest.json" "$SPRITES"/
+}
 
 echo "== [1/4] submodule =="
 if [ -f "$SM/run.py" ]; then
@@ -69,9 +100,12 @@ elif [ -d "$PIGSRC" ]; then
   mkdir -p "$SPRITES"
   cp "$PIGSRC"/*.png "$PIGSRC"/manifest.json "$SPRITES"/
   echo "  copied pig sprites from $PIGSRC"
+elif fetch_sprites; then
+  echo "  downloaded pig sprites from $SPRITE_REPO"
 else
-  echo "  WARNING: sprite source $PIGSRC not found."
-  echo "           PIGSRC=<내_그림_폴더> 로 다시 돌리거나, $SPRITES 에 직접 넣으세요."
+  echo "  WARNING: 스프라이트를 로컬($PIGSRC)에서도 $SPRITE_REPO 에서도 가져오지 못했습니다."
+  echo "           네트워크 문제라면 다시 실행하고, 자기 그림을 쓰려면"
+  echo "           PIGSRC=<내_그림_폴더> ./scripts/setup.sh 로 넘기세요."
   echo "           필요한 파일은 assets/sprites/README.md 참고."
 fi
 # derived expression sprites (half-eye, smile) — mechanical transforms of existing art

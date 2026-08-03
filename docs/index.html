@@ -372,7 +372,7 @@ function render(now) {
   demoApply();   // 자동 쇼케이스 (미러링 off 일 때만)
   mirror.apply(smooth, now);
   const blink = Math.max(blinker.value(now), W("eyeblinkleft"), W("eyeblinkright"));
-  mpanel.draw(W);   // 비교군 — 캐릭터와 같은 프레임의 채널값
+  mpanel.draw();    // 트래킹 미리보기
 
   if (is3D()) {
     if (!mounted) return;

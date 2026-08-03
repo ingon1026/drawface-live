@@ -11,7 +11,9 @@ PY="$VENV/bin/python"
 MPMODEL="$CKPT/mediapipe/face_landmarker.task"
 MPURL="https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
 SPRITES="$ROOT/assets/sprites/pig"
-PIGSRC="/home/ingon/face/assets_characters/pig"
+# 스프라이트는 사용자가 직접 그린 그림에서 파생돼 커밋되지 않는다(.gitignore).
+# 다른 머신에서는 PIGSRC 로 자기 그림 경로를 넘긴다: PIGSRC=~/art/pig ./scripts/setup.sh
+PIGSRC="${PIGSRC:-$HOME/face/assets_characters/pig}"
 
 echo "== [1/4] submodule =="
 if [ -f "$SM/run.py" ]; then
@@ -68,7 +70,9 @@ elif [ -d "$PIGSRC" ]; then
   cp "$PIGSRC"/*.png "$PIGSRC"/manifest.json "$SPRITES"/
   echo "  copied pig sprites from $PIGSRC"
 else
-  echo "  WARNING: sprite source $PIGSRC not found — supply pig artwork into $SPRITES manually"
+  echo "  WARNING: sprite source $PIGSRC not found."
+  echo "           PIGSRC=<내_그림_폴더> 로 다시 돌리거나, $SPRITES 에 직접 넣으세요."
+  echo "           필요한 파일은 assets/sprites/README.md 참고."
 fi
 # derived expression sprites (half-eye, smile) — mechanical transforms of existing art
 if [ -f "$SPRITES/base.png" ] && [ ! -f "$SPRITES/eye_L_half.png" ] && [ -x "$PY" ]; then

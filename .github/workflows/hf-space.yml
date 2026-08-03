@@ -58,7 +58,7 @@ jobs:
           웹캠 앞 표정을 그림이 그대로 따라 하는 데모. 얼굴 인식(MediaPipe)부터 렌더까지
           **전부 브라우저 안에서** 처리되고 영상은 어디로도 전송되지 않습니다.
 
-          소스와 기술 문서: https://github.com/ingon1026/drawface-live
+          소스와 기술 문서: https://github.com/ingon1/drawface-live
           EOF
 
       - name: hf CLI 설치
@@ -69,7 +69,7 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_SPACE: ${{ vars.HF_SPACE || 'ingon1026/drawface-live' }}
+          HF_SPACE: ${{ vars.HF_SPACE || 'ingon1/drawface-live' }}
         run: |
           # --delete="*" 라야 리포에서 지운 파일이 Space 에서도 사라진다. 없으면 삭제분이
           # 영영 남아, 지운 자산을 참조하는 페이지가 Space 에서만 계속 동작하는 상태가 된다.
@@ -80,14 +80,16 @@ jobs:
       - name: 배포 확인
         if: steps.gate.outputs.ready == 'true'
         env:
-          HF_SPACE: ${{ vars.HF_SPACE || 'ingon1026/drawface-live' }}
+          HF_SPACE: ${{ vars.HF_SPACE || 'ingon1/drawface-live' }}
         run: |
           # 업로드 성공이 곧 서빙 성공은 아니다 — 실제로 200 이 오는지 본다.
+          # 정적 Space 의 서빙 도메인은 .static.hf.space 다 — 그냥 .hf.space 는 404.
+          # 그리고 / 는 /index.html 로 302 하므로 -L 로 따라가야 200 을 본다.
           sub=$(echo "$HF_SPACE" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-          url="https://$sub.hf.space/"
+          url="https://$sub.static.hf.space/"
           echo "확인 대상: $url"
           for i in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)
+            code=$(curl -sL -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)
             [ "$code" = "200" ] && { echo "✔ $url 서빙 중"; exit 0; }
             echo "  HTTP $code — 빌드 대기 ($i/12)"; sleep 15
           done

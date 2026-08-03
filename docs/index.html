@@ -22,7 +22,7 @@
      (내용물은 코어 AvatarCore.makeMirrorPanel 이 인라인 스타일로 생성 — 여긴 배치만) */
   #panel { flex: 0 0 280px; display: none; }
   #panel.on { display: block; }
-  #recBtn.on { background: #e2647e; }
+  #recBtn.on { background: #e2647e; color: #fff; border-color: transparent; }
   @media (max-width: 620px) {
     main { padding: 12px 0 32px; }
     #panel { flex: 1 1 100%; max-width: 560px; }
@@ -34,15 +34,15 @@
   #gl { z-index: 0; } #cv { z-index: 1; }
   #cv3d { width: 100%; height: 100%; display: block; }
   .row { display: flex; gap: 8px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
-  button { padding: 11px 16px; border-radius: 10px; border: 0; background: #5b8cff; color: #fff; font-size: .95rem; font-weight: 600; cursor: pointer; }
-  button.alt { background: #2a2a35; }
-  #mirrorBtn.on { background: #e2647e; }
-  select { padding: 10px; border-radius: 10px; background: #0d0d12; color: inherit; border: 1px solid #2a2a35; font-size: .95rem; }
+  button { padding: 10px 16px; border-radius: 6px; border: 1px solid transparent; background: #e8e8ef; color: #16161d; font-size: .95rem; font-weight: 600; cursor: pointer; }
+  button.alt { background: transparent; color: #c9c9d4; border-color: #3a3f47; }
+  #mirrorBtn.on { background: #e2647e; color: #fff; }
+  select { padding: 10px; border-radius: 6px; background: #0d0d12; color: inherit; border: 1px solid #3a3f47; font-size: .95rem; }
   a.link { color: #9a9ab0; font-size: .88rem; text-decoration: none; margin-left: auto; }
   #status { margin-top: 12px; color: #9a9ab0; font-size: .9rem; min-height: 1.2em; }
   #status.error { color: #ff7a7a; }
   footer { margin-top: 22px; font-size: .78rem; color: #66667a; line-height: 1.6; }
-  footer a { color: #8a8aff; }
+  footer a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
   /* ---- OBS 브라우저 소스용 클린 모드 (?clean=1) ----
      UI 를 전부 숨기고 배경을 투명하게 만들어, 캐릭터만 방송 화면 위에 얹히게 한다. */
   body.clean { background: transparent; }
@@ -57,7 +57,7 @@
 </head>
 <body>
 <main>
-  <h1>🪞 DrawFace Live — 웹캠 표정 미러링</h1>
+  <h1>DrawFace Live — 웹캠 표정 미러링</h1>
 
   <div class="duo">
     <div class="stage" id="stage3d"><canvas id="cv3d"></canvas></div>
@@ -69,22 +69,22 @@
   </div>
 
   <div class="row">
-    <button id="mirrorBtn">🪞 미러링 시작</button>
-    <button class="alt" id="panelBtn">📊 분석</button>
-    <button class="alt" id="recBtn" title="캐릭터 캔버스만 WebM 영상으로 저장">⏺ 녹화</button>
+    <button id="mirrorBtn">미러링 시작</button>
+    <button class="alt" id="panelBtn">분석</button>
+    <button class="alt" id="recBtn" title="캐릭터 캔버스만 WebM 영상으로 저장">녹화</button>
     <select id="charSel">
-      <option value="mark">🗿 석고상 남성 (NVIDIA mark · 3D)</option>
-      <option value="claire">🗿 석고상 여성 (NVIDIA claire · 3D)</option>
-      <option value="rpmA">🧑 아바타 A (Ready Player Me · 3D)</option>
-      <option value="rpmB">🧑 아바타 B (Ready Player Me · 3D)</option>
-      <option value="boy">🎨 소년 (그래픽 · 2D)</option>
-      <option value="girl">🎨 소녀 (그래픽 · 2D)</option>
+      <option value="mark">석고상 남성 (NVIDIA mark · 3D)</option>
+      <option value="claire">석고상 여성 (NVIDIA claire · 3D)</option>
+      <option value="rpmA">아바타 A (Ready Player Me · 3D)</option>
+      <option value="rpmB">아바타 B (Ready Player Me · 3D)</option>
+      <option value="boy">소년 (그래픽 · 2D)</option>
+      <option value="girl">소녀 (그래픽 · 2D)</option>
     </select>
     <label style="display:flex;align-items:center;gap:6px;font-size:.9rem;color:#9a9ab0;cursor:pointer">
       <input type="checkbox" id="headMove"> 머리 움직임
     </label>
-    <a class="link" href="combo.html" style="margin-left:auto">🎬 5인 동시</a>
-    <a class="link" href="draw.html" style="margin-left:12px">✏️ 내 손그림 →</a>
+    <a class="link" href="combo.html" style="margin-left:auto">5인 동시</a>
+    <a class="link" href="draw.html" style="margin-left:12px">내 손그림 →</a>
   </div>
 
   <div id="status">모델 로딩 중…</div>
@@ -147,12 +147,12 @@ const blinker = AvatarCore.makeBlink({ autoBlink: () => true, intervalMs: () => 
 const mirror = AvatarCore.makeMirror({ onStatus: setStatus });
 $("mirrorBtn").onclick = () => {
   if (mirror.on) {
-    mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "🪞 미러링 시작";
+    mirror.stop(); $("mirrorBtn").classList.remove("on"); $("mirrorBtn").textContent = "미러링 시작";
     scheduleDemo(3000);   // 미러링 끝나면 유휴 시연 재개
     return;
   }
   showcase.stop(); clearTimeout(demoTimer);   // 직접 조종 시작 — 시연 즉시 중단
-  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; panel.classList.add("on"); })
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "미러링 종료"; panel.classList.add("on"); })
     .catch(e => { mirror.stop(); $("mirrorBtn").classList.remove("on"); setStatus("미러링 실패: " + e.message, true); });
 };
 
@@ -178,9 +178,9 @@ function scheduleDemo(delay) {
   clearTimeout(demoTimer);
   demoTimer = setTimeout(() => {
     if (mirror.on || showcase.running) return;
-    setStatus("🎬 자동 시연 중 — 🪞 미러링 시작을 누르면 직접 조종할 수 있어요");
+    setStatus("자동 시연 중 — 미러링 시작을 누르면 직접 조종할 수 있어요");
     showcase.play().then(() => {
-      if (!mirror.on) { setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요"); scheduleDemo(5000); }
+      if (!mirror.on) { setStatus("미러링 시작을 누르고 카메라를 허용해주세요"); scheduleDemo(5000); }
     });
   }, delay);
 }
@@ -227,11 +227,11 @@ $("recBtn").onclick = () => {
     a.click();
     URL.revokeObjectURL(a.href);
     recorder = null; recCv = null;
-    $("recBtn").classList.remove("on"); $("recBtn").textContent = "⏺ 녹화";
+    $("recBtn").classList.remove("on"); $("recBtn").textContent = "녹화";
     setStatus("녹화 완료 — WebM 다운로드를 시작했습니다");
   };
   recorder.start();
-  $("recBtn").classList.add("on"); $("recBtn").textContent = "⏹ 녹화 종료";
+  $("recBtn").classList.add("on"); $("recBtn").textContent = "녹화 종료";
   setStatus("녹화 중 — 캐릭터 캔버스만 저장됩니다 (웹캠 화면은 포함 안 됨)");
 };
 
@@ -278,7 +278,7 @@ function load3D(name) {
     if (!r) { setStatus(cfg.label + ": 표정 모프타깃이 없는 모델입니다", true); return; }
     mounted = r;
     loaded3D = name;   // 캐시 히트 포함, 화면에 실제로 올라간 시점에 확정
-    setStatus("🪞 미러링 시작을 누르고 카메라를 허용해주세요");
+    setStatus("미러링 시작을 누르고 카메라를 허용해주세요");
   };
   if (glbCache[name]) return done(glbCache[name]);
   setStatus(cfg.label + " 불러오는 중…");
@@ -358,7 +358,7 @@ $("charSel").onchange();   // 현재 selection 을 한 번 로드 (기본 mark �
 // ?auto=1 — OBS 처럼 클릭이 불가능한 환경에서 미러링 자동 시작 (권한 거부 시 조용히 무시)
 if (Q.get("auto") === "1") {
   showcase.stop(); clearTimeout(demoTimer);
-  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "⏹ 미러링 종료"; })
+  mirror.start().then(() => { $("mirrorBtn").classList.add("on"); $("mirrorBtn").textContent = "미러링 종료"; })
     .catch(() => setStatus("자동 미러링 실패 — 카메라 권한을 확인해주세요", true));
 }
 

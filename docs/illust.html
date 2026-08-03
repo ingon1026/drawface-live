@@ -20,7 +20,7 @@
   h2 { font-size: 1.02rem; font-weight: 700; margin: 34px 0 10px; }
   p { line-height: 1.7; color: #c3c3d2; font-size: .93rem; margin: 8px 0; }
   .lede { color: #9a9ab0; font-size: .9rem; margin-bottom: 6px; }
-  .tag { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: .76rem; font-weight: 700; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .74rem; font-weight: 700; letter-spacing: .02em; }
   .tag.ok { background: #17402c; color: #7ee0a8; }
   .tag.no { background: #431c22; color: #ff9aa5; }
   .duo { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -34,17 +34,17 @@
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a35; }
   th { color: #9a9ab0; font-weight: 600; }
   td strong { color: #7ee0a8; }
-  a { color: #8a8aff; }
+  a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
   .row { display: flex; gap: 8px; margin-top: 18px; align-items: center; flex-wrap: wrap; }
-  .btn { padding: 11px 16px; border-radius: 10px; background: #5b8cff; color: #fff;
+  .btn { padding: 10px 16px; border-radius: 6px; border: 1px solid transparent; background: #e8e8ef; color: #16161d;
          font-size: .93rem; font-weight: 600; text-decoration: none; }
-  .btn.alt { background: #2a2a35; color: #e8e8ef; }
+  .btn.alt { background: transparent; color: #c9c9d4; border-color: #3a3f47; }
   footer { margin-top: 30px; font-size: .78rem; color: #66667a; line-height: 1.7; }
 </style>
 </head>
 <body>
 <main>
-  <h1>🖼 일러스트 트랙 — 그림이 내 표정을 따라 한다</h1>
+  <h1>일러스트 트랙 — 그림이 내 표정을 따라 한다</h1>
   <p class="lede">FasterLivePortrait · 로컬 GPU 전용 · 아래는 미리 렌더한 결과입니다</p>
 
   <p>
@@ -97,8 +97,8 @@
   </div>
 
   <div class="row">
-    <a class="btn" href="./">🪞 실시간 미러링 해보기</a>
-    <a class="btn alt" href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">📄 직접 돌려보는 법</a>
+    <a class="btn" href="./">실시간 미러링 해보기</a>
+    <a class="btn alt" href="https://github.com/ingon1026/drawface-live#일러스트-트랙--liveportrait-실시간-2026-07-23-재실측">직접 돌려보는 법</a>
   </div>
 
   <footer>

@@ -1,12 +1,14 @@
 /* avatar_core.js — talking-drawing-avatar 리포 static/avatar_core.js 의 vendored 사본.
  * 여기서 수정하지 말 것 — 원본에서 고친 뒤 아래로 갱신한다:
- *     cp ~/face/static/avatar_core.js docs/avatar_core.js  (이 헤더 주석은 유지)
+ *     ./scripts/sync_avatar_core.sh        (이 헤더는 보존하고 본문만 갱신)
+ *     ./scripts/sync_avatar_core.sh --check (뒤처졌는지 확인 — CI 가 매번 돌린다)
  * 이 리포에서는 index.html(미러링 스튜디오)이 소비한다.
  */
 window.AvatarCore = (() => {
 
   // ---------- 내부 유틸 ----------
   const norm = s => s.toLowerCase().replace(/[_\-\s]/g, "");
+  const clamp01 = v => Math.min(1, Math.max(0, v));                         // 0~1 로 자르기
   const avgLR = (W, base) => (W(base + "left") + W(base + "right")) / 2;   // 좌우 채널 평균
   const roundness = W => Math.max(W("mouthpucker"), W("mouthfunnel"));       // 오므림 세기
   const WARP_JAW_G = Math.exp(-(38 * 38) / (2 * 55 * 55));                   // jaw 변위장을 입 앵커(38px 위)에서 평가한 가우시안 (시그마 55 = 워프 셰이더와 동일)
@@ -153,7 +155,7 @@ window.AvatarCore = (() => {
       const gain = prof.gain[name] || 1;
       if (!base && gain === 1) continue;            // 손댈 것 없는 채널은 건너뛴다
       anim.frames.forEach((f, i) => {
-        f[col] = Math.min(1, Math.max(0, (vals[i] - base) * gain));
+        f[col] = clamp01((vals[i] - base) * gain);
       });
     }
     return anim;
@@ -182,7 +184,7 @@ window.AvatarCore = (() => {
     // 항상 새 객체로 스케일 — 공유 EMOTIONS 프리셋 앨리어싱 회피(v*1===v 라 무손실).
     // isSticky=false(자동 발화 감정)면 발화가 끝난 뒤 표정이 얼어붙지 않고 천천히 풀린다.
     let curKey = "neutral", curInt = 1;   // 몸짓 연동용 현재 감정 (current() 로 노출)
-    let trackSeg = null, fadeFrom = {}, fadeAt = 0;   // 문장별 전환용 크로스페이드 상태
+    let trackSeg = null, fadeFrom = {};   // 문장별 전환용 크로스페이드 상태
     function setEmotion(key, intensity = 1, isSticky = true) {
       const base = EMOTIONS[key] || EMOTIONS.neutral;
       emotion = {};
@@ -202,14 +204,17 @@ window.AvatarCore = (() => {
         if (!track || !track.length || sticky) return;   // 수동 버튼이 눌렸으면 사용자 의도가 우선
         let seg = track[0];
         for (const t of track) if (tSec >= t.start) seg = t;
-        if (seg !== trackSeg) { fadeFrom = emotion; fadeAt = tSec; trackSeg = seg; }
-        const k = Math.min(1, Math.max(0, (tSec - fadeAt) / CROSSFADE_S));
+        if (seg !== trackSeg) { fadeFrom = emotion; trackSeg = seg; }
+        // fadeAt=seg.start: 경계에서 tSec≈seg.start(위 루프가 tSec>=seg.start 인 세그를 고르므로)이고,
+        // 첫 호출은 speakWithEmotion 이 이미 세그 0 프리셋을 적용해둔 뒤라 k=1 이 곧바로 맞다.
+        // 별도 변수로 관측 시각을 박제하지 않으므로 일시정지 후에도 페이드가 어긋나지 않는다.
+        const k = clamp01((tSec - seg.start) / CROSSFADE_S);
         const base = EMOTIONS[seg.emo] || EMOTIONS.neutral;
         const blended = {};
         for (const key in fadeFrom) blended[key] = fadeFrom[key] * (1 - k);
         for (const key in base) blended[key] = (blended[key] || 0) + base[key] * seg.intensity * k;
         emotion = blended;
-        sticky = false; hold = 1;      // 발화 중 유지, 끝나면 기존대로 감쇠
+        hold = 1;      // 발화 중 유지, 끝나면 기존대로 감쇠
         curKey = seg.emo; curInt = seg.intensity;
       },
       // 감정 프리셋을 현재 평활값에 max-결합. speaking=발화 중이면 유지, 자동 감정은 유휴 시 ~1.5s 감쇠.
@@ -352,10 +357,8 @@ window.AvatarCore = (() => {
   function makeMouthPicker(W) {
     let curMouth = "closed", prevMouth = null, switchAt = 0, mouthCand = "closed", candSince = 0;
     const FADE_MS = 90;
-    // jawGain: shapeAnim이 이번 발화에 적용한 jawopen 증폭 — 아래 임계값은 증폭 전 스케일로
-    // 튜닝돼 있어 나눠서 되돌린다(생략 시 1=무보정).
-    function targetMouth(jawGain = 1) {
-      const jaw = W("jawopen") / jawGain;
+    function targetMouth() {
+      const jaw = W("jawopen");
       const round = roundness(W);
       const wide = Math.max(avgLR(W, "mouthsmile"), avgLR(W, "mouthstretch"));
       const press = avgLR(W, "mouthpress");
@@ -366,8 +369,8 @@ window.AvatarCore = (() => {
       return jaw < 0.14 ? "closed" : "E";
     }
     return {
-      pick(now, jawGain = 1) {
-        const t = targetMouth(jawGain);
+      pick(now) {
+        const t = targetMouth();
         if (t !== mouthCand) { mouthCand = t; candSince = now; }
         if (mouthCand !== curMouth && now - candSince >= 70) {  // 70ms 유지 시에만 전환
           prevMouth = curMouth; switchAt = now; curMouth = mouthCand;
@@ -380,12 +383,10 @@ window.AvatarCore = (() => {
   // ---------- 벡터 입 (근육 채널 → 윤곽 제어점 연속 변형) ----------
   // puppet 의 superset 공식으로 통합. 닫힘곡선 제어점 압력 = max(근육 press, mouthclose*0.5) 로
   // puppet(press 위주)·docs(mouthclose 위주) 양쪽 기존 픽셀을 회귀 없이 재현. frown 반영은 puppet 항.
-  // jawGain: shapeAnim이 이번 발화에 적용한 jawopen 증폭(anim.jawGain) — 이 함수의 입 크기 공식은
-  // 증폭 전 스케일로 튜닝돼 있어 나눠서 되돌린다(생략 시 1=무보정, 기존 호출부 안전).
-  function drawVectorMouth(ctx, W, manifest, jawDy, jawGain = 1) {
+  function drawVectorMouth(ctx, W, manifest, jawDy) {
     const st = manifest.mouthStyle || {};
     const [mcx, mcy0] = manifest.mouthCenter || [256, 340];
-    const jaw = W("jawopen") / jawGain;
+    const jaw = W("jawopen");
     const round = roundness(W);
     const pressM = avgLR(W, "mouthpress");        // 근육 압력 (openH 폐합용)
     const upperUp = avgLR(W, "mouthupperup");
@@ -445,8 +446,8 @@ window.AvatarCore = (() => {
   // ---------- 스프라이트 입 크로스페이드 ----------
   // 반드시 스프라이트 모드 브랜치에서만(프레임당 1회) 호출 — pick() 이 히스테리시스 상태를 전진시킴.
   // 전환 중(fade<1)이고 이전 스프라이트가 존재하면 α로 겹쳐 페이드, 아니면 현재만. jawDy 만큼 세로 이동.
-  function drawSpriteMouth(ctx, parts, picker, now, jawDy, jawGain = 1) {
-    const { cur, prev, fade } = picker.pick(now, jawGain);
+  function drawSpriteMouth(ctx, parts, picker, now, jawDy) {
+    const { cur, prev, fade } = picker.pick(now);
     const drawM = name => parts[name] && ctx.drawImage(parts[name], 0, jawDy);
     if (fade < 1 && prev && parts["mouth_" + prev]) {
       ctx.globalAlpha = 1 - fade; drawM("mouth_" + prev);
@@ -985,7 +986,7 @@ window.AvatarCore = (() => {
       for (const k in raw) {
         if (k === "_neutral") continue;
         const n = st.neutral[k] || 0;
-        const cal = Math.min(1, Math.max(0, (raw[k] - n) / Math.max(0.2, 1 - n)) * (gain[k] || 1));
+        const cal = clamp01((raw[k] - n) / Math.max(0.2, 1 - n) * (gain[k] || 1));
         w[k] = 0.55 * (w[k] || 0) + 0.45 * cal;   // EMA 평활
       }
       st.w = w;
@@ -1209,7 +1210,7 @@ window.AvatarCore = (() => {
   }
 
   return {
-    norm, inferEmotion, classifyEmotion, voiceProsody, smoothStep, weightsFromAnim, shapeAnim,
+    norm, inferEmotion, classifyEmotion, voiceProsody, smoothStep, weightsFromAnim, shapeAnim, SHAPE,
     EMOTIONS, makeEmotion, makeBlink, makeCursorTracker, makeGaze, makeHeadWander,
     makeMouthPicker, drawVectorMouth, drawSpriteMouth, makeWarp, speakFlow, speakWithEmotion,
     bindStatus, makeAnnotator, makeMic, chat, makeChat, makeShowcase, pickReaction, makeMirror, irisGaze, makeMirrorPanel,

@@ -6,8 +6,17 @@ name: Vendor sync
 # "원본을 따라가야 한다" 하나만 뜻해야 한다.
 
 on:
+  # paths 를 거는 이유: 이 검사는 원본이 움직이면 빨개지는데, 그건 PR 작성자가 고칠 수 없는
+  # 이유다. 무관한 PR 까지 빨갛게 만들면 위에 적은 "빨간불의 뜻은 하나" 원칙을 스스로 어긴다.
+  # 시간 경과로 생기는 드리프트는 아래 cron 이 24시간 안에 잡는다.
+  # pull_request 는 넣지 않는다 — push 가 PR 브랜치에도 걸려 같은 커밋을 두 번 돌린다.
   push:
-  pull_request:
+    paths:
+      - docs/avatar_core.js
+      - scripts/sync_avatar_core.sh
+      - .github/workflows/vendor-sync.yml
+  # 이 리포가 놀고 있을 때 원본만 바뀌는 경우를 잡는 유일한 트리거다.
+  # 주의: 공개 리포의 schedule 은 저장소 활동이 60일간 없으면 자동 비활성화된다.
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:

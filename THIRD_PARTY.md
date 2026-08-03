@@ -26,6 +26,25 @@ Integration lives in our wrapper (`app/warp_rig.py`); the solver file is otherwi
 Used by `docs/js/warp.js` to build the same Delaunay face mesh the desktop rig
 gets from `scipy.spatial.Delaunay`.
 
+## avatar_core.js (shared render core, sibling repo)
+
+| Field | Value |
+| --- | --- |
+| Upstream URL | https://github.com/ingon1026/talking-drawing-avatar |
+| Upstream path | `static/avatar_core.js` |
+| Vendored at | `docs/avatar_core.js` — consumed by `index.html` (mirroring studio) |
+| License | same author, both repos |
+| Sync | `./scripts/sync_avatar_core.sh` — `--check` compares without writing |
+| CI | Vendor sync workflow, on push and daily |
+
+The only vendored artifact here whose upstream **moves on its own**, which is why it gets a cron
+and FasterLivePortrait does not: those patches target a pinned SHA and cannot drift unattended.
+This copy did fall four commits behind unnoticed on 2026-07-31 — that is what the sync script and
+the daily check exist to prevent.
+
+Only the leading comment block differs between the two copies (each repo states its own role), so
+the script compares everything *after* the first `*/` rather than hashing the whole file.
+
 ## FasterLivePortrait (primary animation engine)
 
 | Field | Value |
@@ -43,7 +62,7 @@ returns the SHA above). It is registered in `.gitmodules` with `ignore = untrack
 writes a `results/` directory inside its own tree at runtime; that directory must not appear as submodule dirt.
 
 The sprite and ARAP warp tracks use no upstream code at all — their integration lives entirely in
-our own wrapper (`app/`). The illustration track is the one exception, below.
+our own wrapper (`app/`). The illustration track is the one exception.
 
 ### Local patches — illustration track only
 
@@ -62,11 +81,6 @@ Real-time webcam puppeting of standard-proportion illustrations and paintings (T
 records its own target. `apply_vendor_patches.sh` independently reads the gitlink SHA the parent
 repo has recorded, and refuses to run if the submodule sits anywhere else.
 
-```bash
-./scripts/apply_vendor_patches.sh          # apply; re-running is a no-op
-./scripts/apply_vendor_patches.sh --check  # verify they still apply, exit 1 if not
-```
-
 To restore the patched tree **outside** this repo — a standalone clone rather than the submodule —
 use `git am` instead (verified independently by two people: 4 patches apply cleanly and the result
 is byte-identical to the original working tree, text files):
@@ -84,7 +98,9 @@ not dirt to clean up. `ignore = untracked` hides the files the patches *add* but
 *modify*. To revert: `git -C third_party/FasterLivePortrait checkout -- .` and delete the three
 added files (`live.sh`, `README_LOCAL.md`, `configs/trt_infer_eyes.yaml`).
 
-`--check` in CI would need `actions/checkout@v4` with `submodules: true`; no workflow runs it today.
+The Verify workflow runs `--check` on every push and PR (its checkout uses `submodules: true` for
+this). A red light there means this repo contradicts itself — the patches or the gitlink moved —
+never that upstream drifted, since the patches apply to a pinned SHA that cannot change on its own.
 
 One caveat when running the patched `live.sh` from inside the submodule: it mounts only its own
 tree (`-v "$PWD:/root/FLP"`), and `third_party/FasterLivePortrait/checkpoints/` here is an empty

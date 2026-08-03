@@ -4,7 +4,8 @@
 # THIRD_PARTY.md 의 "FasterLivePortrait" 항목.
 #
 #   ./scripts/apply_vendor_patches.sh          vendor_patches/faster-live-portrait/*.patch 를 순서대로 적용
-#   ./scripts/apply_vendor_patches.sh --check  적용하지 않고 적용 가능 여부만 확인 (불가하면 exit 1)
+#   ./scripts/apply_vendor_patches.sh --check  패치가 업스트림에 붙는지만 확인 (불가하면 exit 1).
+#     서브모듈의 현재 상태는 보지 않는다 — 이미 적용됐든 아니든 결과가 같다.
 #
 # 패치는 커밋이 아니라 워킹트리에 얹는다(git am 아닌 git apply). 서브모듈 HEAD 는 고정 SHA 로
 # 남고 대신 부모 리포에 "modified content" 로 보인다 — 정상이다. 되돌리려면
@@ -15,7 +16,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SM="$ROOT/third_party/FasterLivePortrait"
-PATCH_DIR="${VENDOR_PATCH_DIR:-$ROOT/vendor_patches/faster-live-portrait}"
+PATCH_DIR="$ROOT/vendor_patches/faster-live-portrait"
 
 if [ ! -e "$SM/.git" ]; then
   echo "✘ 서브모듈 third_party/FasterLivePortrait 가 체크아웃돼 있지 않습니다." >&2

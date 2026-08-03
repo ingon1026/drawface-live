@@ -11,7 +11,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # 서브모듈까지 받는 이유: 아래 벤더 패치 검사가 third_party/FasterLivePortrait 를 필요로 한다.
       - uses: actions/checkout@v4
+        with:
+          submodules: true
+      # 벤더 패치가 고정 SHA 에 여전히 붙는지. 이 빨간불은 "이 리포가 내부적으로 모순"이라는 뜻이라
+      # (원본이 움직여서가 아니라 우리가 패치나 gitlink 를 건드려서만 깨진다) Vendor sync 가 아니라
+      # 여기 소속이다.
+      - name: 벤더 패치가 서브모듈에 적용 가능한지
+        run: ./scripts/apply_vendor_patches.sh --check
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

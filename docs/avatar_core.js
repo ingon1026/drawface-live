@@ -193,7 +193,9 @@ window.AvatarCore = (() => {
   // ---------- 감정 프리셋 (studio3d 버전이 superset 이라 그것으로 통합) ----------
   const EMOTIONS = {
     neutral: {},
-    joy: { mouthsmileleft: 0.55, mouthsmileright: 0.55, cheeksquintleft: 0.45, cheeksquintright: 0.45, eyesquintleft: 0.25, eyesquintright: 0.25 },
+    // eyesquint 가 0.25 이던 시절엔 눈꺼풀이 14%만 닫혀 눈웃음이 보이지 않았다 —
+    // 진짜 웃음(Duchenne)의 핵심 채널이라 입꼬리에 준하는 값을 준다.
+    joy: { mouthsmileleft: 0.55, mouthsmileright: 0.55, cheeksquintleft: 0.45, cheeksquintright: 0.45, eyesquintleft: 0.5, eyesquintright: 0.5 },
     sad: { mouthfrownleft: 0.5, mouthfrownright: 0.5, browinnerup: 0.7, mouthshrugupper: 0.2 },
     angry: { browdownleft: 0.85, browdownright: 0.85, nosesneerleft: 0.4, nosesneerright: 0.4, mouthpressleft: 0.4, mouthpressright: 0.4, jawforward: 0.25 },
     surprise: { browinnerup: 0.6, browouterupleft: 0.75, browouterupright: 0.75, eyewideleft: 0.8, eyewideright: 0.8, jawopen: 0.3 },
@@ -259,16 +261,21 @@ window.AvatarCore = (() => {
   // ---------- 깜빡임 (버튼 + 자동) ----------
   // autoBlink:()=>bool, intervalMs:()=>ms 는 매 프레임 라이브 조회. duration/jitter 상수 페이지별
   // (puppet/docs 140·0.6·슬라이더, studio3d 150·0.8·3500). 상태는 클로저에 캡슐화.
-  function makeBlink({ autoBlink, intervalMs, duration, jitter }) {
-    let blinkUntil = 0, nextAutoBlink = performance.now() + 4000;
+  function makeBlink({ autoBlink, intervalMs = () => 4000, duration, jitter }) {
+    let blinkAt = -1e9, nextAutoBlink = performance.now() + 4000;
     return {
-      trigger() { blinkUntil = performance.now() + duration; },
+      trigger() { blinkAt = performance.now(); },
+      // 0~1 연속값. 예전엔 (now < blinkUntil ? 1 : 0) 사각파여서 눈이 순간이동으로 닫혔고,
+      // 소비 측의 blink>0.5 이진 분기와 맞물려 부분 감김이 원리적으로 표현 불가능했다.
+      // 실제 눈깜빡임은 감기는 쪽이 뜨는 쪽보다 빠르다 — 앞 35%를 감김, 나머지를 뜸에 준다.
       value(now) {
         if (autoBlink() && now > nextAutoBlink) {
-          blinkUntil = now + duration;
+          blinkAt = now;
           nextAutoBlink = now + intervalMs() * (0.7 + Math.random() * jitter);  // 자연스러운 지터
         }
-        return now < blinkUntil ? 1 : 0;
+        const t = (now - blinkAt) / duration;
+        if (t < 0 || t > 1) return 0;
+        return t < 0.35 ? t / 0.35 : 1 - (t - 0.35) / 0.65;
       },
     };
   }
@@ -291,13 +298,12 @@ window.AvatarCore = (() => {
   // 반환: (sliderVal, W) => [gx, gy]. docs 는 슬라이더가 없어 sliderVal=0 고정으로 호출.
   function makeGaze(cursor, { mulX, mulY }) {
     let gx = 0, gy = 0, sacX = 0, sacY = 0, sacNext = 0;
-    return (sliderVal, W) => {
+    return (W) => {
       const now = performance.now();
       const chX = (W("eyelookoutright") + W("eyelookinleft") - W("eyelookoutleft") - W("eyelookinright")) / 2;
       const chY = (W("eyelookdownleft") + W("eyelookdownright") - W("eyelookupleft") - W("eyelookupright")) / 2;
-      const manual = Math.abs(sliderVal) > 0.01;
-      // 슬라이더·엔진채널·커서 다 없으면 유휴 → 눈동자 미세 saccade(죽은 눈 방지)
-      const idle = !manual && !chX && !chY
+      // 엔진채널·커서 다 없으면 유휴 → 눈동자 미세 saccade(죽은 눈 방지)
+      const idle = !chX && !chY
         && Math.abs(cursor.gx) < 0.02 && Math.abs(cursor.gy) < 0.02;
       if (idle && now > sacNext) {
         sacNext = now + 1200 + Math.random() * 2000;
@@ -305,8 +311,8 @@ window.AvatarCore = (() => {
         sacX = center ? 0 : (Math.random() - 0.5) * 0.5;
         sacY = center ? 0 : (Math.random() - 0.5) * 0.3;
       }
-      // 우선순위: 유휴 saccade, 아니면 슬라이더 > 엔진채널 > 커서
-      const tgtX = idle ? sacX : (manual ? sliderVal : (chX || cursor.gx * mulX));
+      // 우선순위: 유휴 saccade, 아니면 엔진채널 > 커서
+      const tgtX = idle ? sacX : (chX || cursor.gx * mulX);
       const tgtY = idle ? sacY : (chY || cursor.gy * mulY);
       gx += (tgtX - gx) * 0.15;
       gy += (tgtY - gy) * 0.15;
@@ -475,6 +481,33 @@ window.AvatarCore = (() => {
   // ---------- 스프라이트 입 크로스페이드 ----------
   // 반드시 스프라이트 모드 브랜치에서만(프레임당 1회) 호출 — pick() 이 히스테리시스 상태를 전진시킴.
   // 전환 중(fade<1)이고 이전 스프라이트가 존재하면 α로 겹쳐 페이드, 아니면 현재만. jawDy 만큼 세로 이동.
+  // 원본 입술을 위/아래 두 장으로 갈라 아랫입술만 내린다. 그 사이에 구강이 드러난다.
+  // 원본을 그대로 두면 벌릴 틈이 없고(그림에 입 안쪽이 없다), 구강을 통째로 얹으면
+  // 입술을 덮어버린다 — 둘 다 실측으로 확인하고 이 구조로 왔다.
+  // 원본 입술만 변형한다 — 구강은 그리지 않는다.
+  //
+  // 다문 입 그림에는 벌어진 입의 픽셀이 아예 없다. 그 자리를 채우려면 없는 걸 만들어야
+  // 하고, 만든 구강은 어떤 색·모양을 골라도 원본 화풍과 겉돈다(타원·사각형 둘 다 실측).
+  // 그래서 입을 "벌리지" 않고 입술 자체를 늘였다 오므렸다 한다 — 모든 픽셀이 원본이다.
+  // 만화 표현에서도 입을 안 벌리고 입술만 움직이는 립싱크는 흔하다.
+  function drawSplitLips(ctx, parts, W, manifest, jawDy) {
+    const lips = parts.mouth_lips;
+    if (!lips) return false;
+    const box = manifest.mouthBox || [0, 0, 0, 0];
+    const cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
+    // 벌림(jaw)은 세로로 늘리고, 오므림(round)은 가로로 좁힌다 — 입술 모양만으로
+    // "아/오/우"의 차이가 읽힌다.
+    const sy = 1 + W("jawopen") * 0.5 + avgLR(W, "mouthlowerdown") * 0.15;
+    const sx = 1 - roundness(W) * 0.22 + avgLR(W, "mouthstretch") * 0.12;
+    ctx.save();
+    ctx.translate(cx, cy + jawDy);
+    ctx.scale(sx, sy);
+    ctx.translate(-cx, -cy);
+    ctx.drawImage(lips, 0, 0);
+    ctx.restore();
+    return true;
+  }
+
   function drawSpriteMouth(ctx, parts, picker, now, jawDy) {
     const { cur, prev, fade } = picker.pick(now);
     const drawM = name => parts[name] && ctx.drawImage(parts[name], 0, jawDy);
@@ -504,20 +537,38 @@ window.AvatarCore = (() => {
       },
       vert: `
         uniform vec2 uJawC, uCornerL, uCornerR;
-        uniform float uJaw, uSmileL, uSmileR, uRound, uFrownL, uFrownR;
+        uniform float uJaw, uSmileL, uSmileR, uRound, uFrownL, uFrownR, uSneer;
+        uniform float uCheek, uJawFwd, uShrug;
+        uniform vec2 uNoseC;
         varying vec2 vUv;
         float gk(vec2 p, vec2 c, float s){ vec2 d = p - c; return exp(-dot(d, d) / (2.0 * s * s)); }
         void main() {
           vUv = uv;
           vec2 img = vec2(position.x + 256.0, 256.0 - position.y);   // plane → 이미지 픽셀좌표(y down)
           vec2 disp = vec2(0.0);
-          disp += vec2( 0.0, 14.0) * uJaw    * gk(img, uJawC,    55.0);   // 턱 드롭
+          // 턱 드롭. 벡터 입을 안 쓰는(원본 입을 살린) 캐릭터는 이 워프가 유일한 립싱크라
+          // 진폭이 커야 보인다 — 14px 로는 jawOpen 0.3 에서 4px 라 화면에서 안 읽혔다.
+          disp += vec2( 0.0, 34.0) * uJaw    * gk(img, uJawC,    40.0);   // 턱 드롭
           disp += vec2(-7.0, -9.0) * uSmileL * gk(img, uCornerL, 32.0);   // 좌 입꼬리 (볼 당김)
           disp += vec2( 7.0, -9.0) * uSmileR * gk(img, uCornerR, 32.0);   // 우 입꼬리
           disp += vec2( 8.0,  0.0) * uRound  * gk(img, uCornerL, 32.0);   // 오므림 (안쪽)
           disp += vec2(-8.0,  0.0) * uRound  * gk(img, uCornerR, 32.0);
           disp += vec2(-3.0,  8.0) * uFrownL * gk(img, uCornerL, 32.0);   // 찡그림 (내림)
           disp += vec2( 3.0,  8.0) * uFrownR * gk(img, uCornerR, 32.0);
+          // 코 찡긋 — 화남의 유일한 상단 얼굴 변형. 앵커가 입뿐이라 화남이 이미지를
+          // 0픽셀 변형하던 문제를 푼다. 코를 위로 당겨 콧등에 주름이 잡히는 인상을 준다.
+          disp += vec2( 0.0, -7.0) * uSneer  * gk(img, uNoseC,   30.0);
+          // 아래 세 앵커는 입꼬리에서 유도한다 — 볼·입 중심은 입꼬리와의 상대 위치가
+          // 캐릭터가 달라도 거의 일정해서, manifest 를 늘리지 않고도 자리를 잡을 수 있다.
+          // 볼은 눈에서 멀리·좁게 잡는다. 눈은 base 위에 별도 스프라이트로 얹히는데 워프는
+          // base 만 변형해서, 커널이 눈까지 닿으면 볼 홍조가 눈 밑으로 밀려 올라와 겹쳤다.
+          vec2 cheekL = uCornerL + vec2(-18.0, -20.0);
+          vec2 cheekR = uCornerR + vec2( 18.0, -20.0);
+          vec2 mouthC = (uCornerL + uCornerR) * 0.5;
+          disp += vec2( 0.0, -5.0) * uCheek  * gk(img, cheekL,   26.0);   // 볼 올림 (진짜 웃음)
+          disp += vec2( 0.0, -5.0) * uCheek  * gk(img, cheekR,   26.0);
+          disp += vec2( 0.0,  5.0) * uJawFwd * gk(img, uJawC,    48.0);   // 턱 내밈 (화남)
+          disp += vec2( 0.0, -5.0) * uShrug  * gk(img, mouthC,   22.0);   // 윗입술 삐죽 (슬픔)
           vec2 pos = position.xy;
           pos.x += disp.x; pos.y -= disp.y;                          // 이미지 y-down → plane y-up
           gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 0.0, 1.0);
@@ -544,6 +595,11 @@ window.AvatarCore = (() => {
               uJawC: { value: new T.Vector2(256, 378) },
               uCornerL: { value: new T.Vector2(220, 340) },
               uCornerR: { value: new T.Vector2(292, 340) },
+              uNoseC: { value: new T.Vector2(256, 300) },
+              uSneer: { value: 0 },
+              uCheek: { value: 0 },
+              uJawFwd: { value: 0 },
+              uShrug: { value: 0 },
               uJaw: { value: 0 }, uSmileL: { value: 0 }, uSmileR: { value: 0 },
               uRound: { value: 0 }, uFrownL: { value: 0 }, uFrownR: { value: 0 },
             },
@@ -580,6 +636,9 @@ window.AvatarCore = (() => {
         this.material.uniforms.uJawC.value.set(mc[0], mc[1] + 38);
         this.material.uniforms.uCornerL.value.set(mc[0] - mw * 1.2, mc[1]);
         this.material.uniforms.uCornerR.value.set(mc[0] + mw * 1.2, mc[1]);
+        // 코는 입 중심에서 위로 — manifest 에 noseCenter 가 있으면 그걸 쓴다
+        const nc = manifest.noseCenter || [mc[0], mc[1] - 44];
+        this.material.uniforms.uNoseC.value.set(nc[0], nc[1]);
       },
       render() {
         if (!this.ready || !this.texture) return;
@@ -590,6 +649,10 @@ window.AvatarCore = (() => {
         u.uRound.value = roundness(W);
         u.uFrownL.value = W("mouthfrownleft");
         u.uFrownR.value = W("mouthfrownright");
+        u.uSneer.value = avgLR(W, "nosesneer");
+        u.uCheek.value = avgLR(W, "cheeksquint");
+        u.uJawFwd.value = W("jawforward");
+        u.uShrug.value = W("mouthshrugupper");
         this.renderer.render(this.scene, this.camera);
       },
     };
@@ -807,6 +870,287 @@ window.AvatarCore = (() => {
   // ctx: 2D 컨텍스트(512²), parts: 이미지 맵, manifest: 캐릭터 튜닝값,
   // W: 채널 접근자, blink: 깜빡임(자동+미러 max 결합), gaze: [gx, gy],
   // opts.warp: makeWarp 인스턴스(선택), opts.clearBg: 배경 채우기 여부(클린 모드면 false)
+  // 눈썹 기울기 최대 각(rad) — 12px 이동과 균형이 맞는 크기로 실측 조정.
+  const BROW_TILT = 0.22;
+
+  // 눈썹을 자기 중심에서 회전시켜 그린다. 스프라이트는 512² 전체 캔버스에 그려져 있으므로
+  // 회전 피벗은 manifest 의 눈 중심(없으면 캔버스 중앙 위쪽)을 쓴다.
+  function drawBrow(name, dy, tilt, manifest) {
+    const img = _partsRef && _partsRef[name];
+    if (!img) return;
+    const c = _ctxRef;
+    if (!tilt) { c.drawImage(img, 0, dy); return; }
+    const [px, py] = manifest.browPivot || [256, 250];
+    c.save();
+    c.translate(px, py + dy); c.rotate(tilt); c.translate(-px, -py);
+    c.drawImage(img, 0, 0);
+    c.restore();
+  }
+  let _partsRef = null, _ctxRef = null;   // drawBrow/drawEyes 가 쓰는 프레임 지역 참조
+
+  // 눈 스프라이트의 열별 프로파일. 캐릭터당 1회 계산해 캐싱한다.
+  //
+  // 알파 bbox 를 쓰면 안 된다 — 빌더가 클릭 좌표 ±반경 사각형을 통째로 잘라 넣어서 알파
+  // 경계가 곧 클릭 상자이고 실제 눈과 다르다. 그래서 잉크(어두운 픽셀)를 기준으로 잡되,
+  // 최대 연결성분만 남긴다 — 소녀 캐릭터는 앞머리 획 141px 이 눈 상자에 걸쳐 있어
+  // 잉크 bbox 가 58px 로 부풀고 눈이 14% 과압축됐다. 그 획은 눈이 아니므로 화면에는
+  // 그대로 두되 애니메이션만 안 받는 게 맞다.
+  //
+  // 화풍은 두 지표로 갈린다(실측): 열마다 잉크가 끊겨 여러 런이 되는 비율(=내부가 비었다),
+  // 그리고 채움률. 만화눈 0.84/0.29, 점눈 0.00/0.69~0.78, 실눈 0.00/0.43~0.47 로
+  // 마진이 넓다.
+  const INK_MAX = 300;   // r+g+b 합이 이 미만이면 '획'. character_builder.snap_eye_box 와 같은 값 —
+                         // 한쪽만 바꾸면 빌더가 자른 상자와 렌더가 재는 프로파일이 다른 눈을 가리킨다.
+  const MIN_VIS = 3;     // 완전히 감겨도 남기는 최소 높이(px). 512² 스프라이트(CANVAS) 기준.
+  const EYE_SIDES = [["L", "eye_L_open", "pupil_L"], ["R", "eye_R_open", "pupil_R"]];
+  const _pairCache = new WeakMap();
+  let _scratch = null;
+
+  // 양쪽 눈을 함께 분류한다. 한 캐릭터의 두 눈은 같은 화풍이므로 판정도 하나여야 하는데,
+  // 눈마다 따로 재면 지표가 임계 근처인 그림에서 좌우가 갈린다 — 돼지·졸라맨이 실제로
+  // blob/line 으로 갈려 한쪽 눈만 감겼다(채움률 0.69 vs 0.58, 임계 0.6).
+  //
+  // 반환: { cls, L, R } — cls 는 공통, L/R 은 각자의 열 프로파일(선눈이면 null).
+  // 캐시 키는 왼쪽 눈 이미지. loadCharacter 가 캐릭터 전환 때만 새 Image 를 만들어
+  // 두 이미지의 수명이 같으므로 한쪽만 키로 잡아도 짝이 어긋나지 않는다.
+  function eyeProfiles(parts) {
+    const eL = parts.eye_L_open;
+    if (!eL) return { cls: null, L: null, R: null };
+    const hit = _pairCache.get(eL);
+    if (hit) return hit;
+    let out = { cls: null, L: null, R: null };
+    try {
+      const raws = [_scan(eL), parts.eye_R_open ? _scan(parts.eye_R_open) : null];
+      const seen = raws.filter(Boolean);
+      if (seen.length) {
+        // 화풍은 두 지표로 갈린다(실측): 열마다 잉크가 끊겨 여러 런이 되는 비율
+        // (=내부가 비었다), 그리고 채움률. 만화눈 0.84/0.29, 점눈 0.00/0.69~0.78,
+        // 실눈 0.00/0.43~0.47. 양쪽 눈의 픽셀을 합쳐 한 번 판정한다.
+        const sum = k => seen.reduce((a, r) => a + r[k], 0);
+        const cls = sum("multi") / sum("cols") >= 0.4 ? "outline"
+                  : (sum("area") / sum("boxArea") >= 0.6 ? "blob" : "line");
+        out = { cls, L: _finish(raws[0], cls), R: _finish(raws[1], cls) };
+      }
+    } catch { /* 픽셀을 못 읽으면 폴백 */ }
+    _pairCache.set(eL, out);
+    return out;
+  }
+
+  // 선눈(획 자체가 그림)은 null 이 된다 — 지킬 굵기가 곧 눈 전체라 어떤 lid 에서도
+  // 움직일 여지가 없다. 소비 측의 `!p` 폴백이 그대로 "원본을 그린다"라서, 별도의
+  // travel 배열이나 플래그 없이 같은 동작이 나온다.
+  function _finish(raw, cls) {
+    if (!raw || cls === "line") return null;
+    const { x0, x1, top, bot, cap, cy0, cy1 } = raw;
+    const prof = { cls, x0, x1, top0: cy0, bot1: cy1 + 1, top };
+    if (cls === "blob") {
+      // 점은 지킬 획이 없다 — 아래 MIN_VIS 만 남기고 위에서 가린다.
+      const travel = new Int16Array(top.length);
+      for (let x = x0; x <= x1; x++) {
+        if (top[x] >= 0) travel[x] = Math.max(0, bot[x] - top[x] + 1 - MIN_VIS);
+      }
+      prof.travel = travel;
+    } else {
+      // 윤곽눈은 눈알 전체를 눌러 내리므로 열별 이동량이 아니라 최소 잔여 높이만 필요하다.
+      const caps = [];
+      for (let x = x0; x <= x1; x++) if (top[x] >= 0) caps.push(cap[x]);
+      caps.sort((a, b) => a - b);
+      prof.capMed = caps[caps.length >> 1] || MIN_VIS;
+    }
+    return prof;
+  }
+
+  function _scan(img) {
+    const W = img.width, H = img.height;
+    if (!_scratch || _scratch.canvas.width !== W || _scratch.canvas.height !== H) {
+      const c = document.createElement("canvas");
+      c.width = W; c.height = H;
+      _scratch = c.getContext("2d", { willReadFrequently: true });
+    }
+    _scratch.clearRect(0, 0, W, H);
+    _scratch.drawImage(img, 0, 0);
+    const d = _scratch.getImageData(0, 0, W, H).data;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let i = 3, p = 0; p < W * H; p++, i += 4) {
+      if (d[i] > 0 && d[i - 3] + d[i - 2] + d[i - 1] < INK_MAX) {
+        const x = p % W, y = (p / W) | 0;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+    if (x1 < 0) return null;
+
+    // 최대 연결성분(8-이웃)만 남긴다 — 소녀 캐릭터는 앞머리 획 141px 이 눈 상자에 걸쳐
+    // 잉크 bbox 가 58px 로 부풀고 눈이 14% 과압축됐다. 그 획은 눈이 아니므로 화면에는
+    // 그대로 두되 애니메이션만 안 받는 게 맞다.
+    // 라벨 배열은 눈 bbox 크기로만 잡는다(512² 는 1MB memset). 0=미라벨이라 fill 불필요.
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    const isInk = (x, y) => {
+      const i = (y * W + x) * 4;
+      return d[i + 3] > 0 && d[i] + d[i + 1] + d[i + 2] < INK_MAX;
+    };
+    const lab = new Int32Array(bw * bh);
+    const stack = [];
+    let best = 0, bestN = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const s = (y - y0) * bw + (x - x0);
+        if (lab[s] || !isInk(x, y)) continue;
+        const id = s + 1;
+        let n = 0;
+        stack.push(x, y); lab[s] = id;
+        while (stack.length) {
+          const qy = stack.pop(), qx = stack.pop(); n++;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = qx + dx, ny = qy + dy;
+              if (nx < x0 || nx > x1 || ny < y0 || ny > y1) continue;
+              const t = (ny - y0) * bw + (nx - x0);
+              if (!lab[t] && isInk(nx, ny)) { lab[t] = id; stack.push(nx, ny); }
+            }
+          }
+        }
+        if (n > bestN) { bestN = n; best = id; }
+      }
+    }
+    if (!best) return null;
+
+    // 열별 최상단/최하단 + 최상단 런 두께, 그리고 분류 지표
+    const top = new Int16Array(W).fill(-1);
+    const bot = new Int16Array(W), cap = new Int16Array(W);
+    let cols = 0, multi = 0, area = 0, cy0 = H, cy1 = -1;
+    for (let x = x0; x <= x1; x++) {
+      let first = -1, last = -1, runs = 0, capH = 0, prev = -2;
+      for (let y = y0; y <= y1; y++) {
+        if (lab[(y - y0) * bw + (x - x0)] !== best) continue;
+        if (first < 0) first = y;
+        last = y; area++;
+        if (y !== prev + 1) runs++;
+        if (runs === 1) capH++;
+        prev = y;
+      }
+      if (first < 0) continue;
+      cols++; if (runs > 1) multi++;
+      top[x] = first; bot[x] = last; cap[x] = capH;
+      if (first < cy0) cy0 = first;
+      if (last > cy1) cy1 = last;
+    }
+    if (!cols) return null;
+    // 분류는 여기서 하지 않는다 — 양쪽 눈 지표를 합쳐 eyeProfiles 가 한 번에 판정한다.
+    // 채움률 분모는 잉크 전체 bbox 가 아니라 **최대 성분이 차지하는 열** 기준이다.
+    // 전체 bbox 를 쓰면 성분 밖 잡티가 폭을 늘려 값이 반토막 난다(돼지 오른눈: 전체
+    // 폭 20 인데 점은 8열 → 0.89 가 0.36 으로 떨어져 점눈이 선눈으로 오분류됐다).
+    return { x0, x1, top, bot, cap, cy0, cy1,
+             cols, multi, area, boxArea: cols * (cy1 - cy0 + 1) };
+  }
+
+  // 눈꺼풀이 내려오는 렌더. 눈알을 찌그러뜨리지 않고 위에서 가린다 — Live2D 도
+  // "윗속눈썹을 아래속눈썹 위치까지 내리고 눈알은 클리핑"이라고 정의한다.
+  // 화풍마다 가리는 방식이 다른 건 지킬 것이 다르기 때문이다(내부 vs 획 굵기).
+  function occludeEye(dst, img, p, lid) {
+    if (!p) { dst.drawImage(img, 0, 0); return; }
+
+    if (p.cls === "outline") {
+      // 흰자가 있는 눈은 눈알째 눌러 내린다. 열별로 가리기만 하면 흰자가 뚫려
+      // '빈 테두리 원'이 되고 눈꺼풀이 내려오는 인상이 안 난다 — 눈알이 눈꺼풀 뒤로
+      // 들어가는 걸 흉내내는 쪽이 이 화풍에 맞는다(자매 리포 deriveHalfEye 와 같은 기하).
+      const w = p.x1 - p.x0 + 1, h = p.bot1 - p.top0;
+      // 최소 높이를 테두리 두께로 — 1px 까지 누르면 눈 하단의 흰자 한 줄만 남아
+      // 감은 눈 자리에 흰 선이 그어진다. 테두리 두께면 그 화풍의 선 색으로 닫힌다.
+      const nh = Math.max(p.capMed, h * (1 - lid));
+      dst.drawImage(img, p.x0, p.top0, w, h, p.x0, p.bot1 - nh, w, nh);
+      return;
+    }
+    // 점눈은 눌러도 지킬 내부가 없다. 위에서 가리기만 해 획 굵기를 보존한다 —
+    // 균일 압축은 실눈 획 6.4px 를 1px 이하로 만들어 화풍을 지우다시피 했다.
+    dst.drawImage(img, 0, 0);
+    for (let x = p.x0; x <= p.x1; x++) {
+      if (p.top[x] < 0 || !p.travel[x]) continue;
+      // 정수 — 서브픽셀 리샘플은 가는 선을 프레임마다 깜박이게 한다
+      const gone = Math.round(lid * p.travel[x]);
+      if (gone > 0) dst.clearRect(x, p.top[x], 1, gone);
+    }
+  }
+
+  function drawEyes(ctx, parts, drawXY, lid, gaze, manifest) {
+    const draw = n => parts[n] && ctx.drawImage(parts[n], 0, 0);
+    const pr = manifest.pupilRange || 0;
+    const gx = gaze[0] * pr, gy = gaze[1] * pr;
+    if (lid <= 0.01) {
+      draw("eye_L_open"); draw("eye_R_open");
+      drawXY("pupil_L", gx, gy); drawXY("pupil_R", gx, gy);
+      return;
+    }
+    const profs = eyeProfiles(parts);
+    for (const [side, eyeName, pupilName] of EYE_SIDES) {
+      const eye = parts[eyeName], pupil = parts[pupilName];
+      if (!eye) continue;
+      const p = profs[side];
+      if (!pupil || !p) { occludeEye(ctx, eye, p, lid); continue; }
+      // 눈동자는 변형하지 않는다 — 같이 누르면 동공이 타원이 돼 졸린 눈처럼 보인다.
+      // Live2D·Character Animator 모두 눈동자를 흰자로 '클리핑'할 뿐 변형하지 않는다.
+      // 오프스크린은 눈 주변만 다룬다 — 512² 를 통째로 지우고 되합성하면 실제로 픽셀이
+      // 바뀌는 5천여 개를 위해 프레임당 1M px 를 왕복하게 된다.
+      const m = Math.ceil(Math.max(Math.abs(gx), Math.abs(gy))) + 2;
+      const sx = Math.max(0, p.x0 - m), sy = Math.max(0, p.top0 - m);
+      const sw = Math.min(ctx.canvas.width - sx, p.x1 - p.x0 + 1 + 2 * m);
+      const sh = Math.min(ctx.canvas.height - sy, p.bot1 - p.top0 + 2 * m);
+      const off = _offscreen(ctx.canvas.width, ctx.canvas.height, sx, sy, sw, sh);
+      occludeEye(off, eye, p, lid);
+      off.globalCompositeOperation = "source-atop";   // 남은 눈 알파 안에만 그려진다
+      off.drawImage(pupil, gx, gy);
+      off.globalCompositeOperation = "source-over";
+      ctx.drawImage(off.canvas, sx, sy, sw, sh, sx, sy, sw, sh);
+    }
+    // 흰자가 있는 눈만 감은 눈 호를 섞는다. 눈알을 끝까지 눌러도 남는 건 흰자 한 줄이라
+    // 그 화풍은 스스로 닫히지 못한다. 점·선 눈은 반대로 자기 획이 곧 닫힌 모습이라
+    // 호를 얹으면 이중선이 된다 — 실측으로 실눈은 획(275~291)과 호(282~292)가 겹쳤다.
+    const seal = profs.cls === "outline" ? clamp01((lid - 0.7) / 0.3) : 0;
+    if (seal > 0.01) {
+      ctx.globalAlpha = seal;
+      draw("eye_L_closed"); draw("eye_R_closed");
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 눈동자 클리핑용 오프스크린 — 매 프레임 새로 만들면 GC 압력이 커서 하나를 돌려쓴다.
+  // 지우는 건 넘겨받은 사각형만(캔버스 전체를 지우면 프레임당 262k px 가 낭비된다).
+  let _off = null;
+  function _offscreen(w, h, sx, sy, sw, sh) {
+    if (!_off || _off.canvas.width !== w || _off.canvas.height !== h) {
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      _off = c.getContext("2d");
+    }
+    _off.clearRect(sx, sy, sw, sh);
+    return _off;
+  }
+
+  // 눈썹 + 눈 (파츠 스프라이트 기반). drawChar2D 와 puppet.html 이 함께 쓴다 —
+  // 한쪽에만 개선이 들어가는 사고를 막으려고 한 곳에 둔다.
+  function drawFaceParts(ctx, { parts, manifest, W, blink, gaze }) {
+    _partsRef = parts; _ctxRef = ctx;
+    const drawXY = (n, dx, dy) => parts[n] && ctx.drawImage(parts[n], dx, dy);
+    const bR = manifest.browRange || 0;
+    const browUp = -bR * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2)
+                 + bR * 0.8 * (W("browdownleft") + W("browdownright")) / 2;   // 찡그림은 반대로 내림
+    // 눈썹 각도 — 위아래 이동만으로는 화남·슬픔이 구분되지 않는다(둘 다 같은 눈썹).
+    // 안쪽 끝을 내리면 찡그림(화남), 올리면 팔자(슬픔·무서움)가 된다. 좌우 대칭이라 부호 반전.
+    const browTilt = (W("browdownleft") + W("browdownright")) / 2 * BROW_TILT
+                   - W("browinnerup") * BROW_TILT * 0.8;
+    drawBrow("brow_L", browUp, +browTilt, manifest);
+    drawBrow("brow_R", browUp, -browTilt, manifest);
+
+    // 눈 — 이진 교체 대신 연속 눈꺼풀. lid 0=완전히 뜸, 1=완전히 감김.
+    // eyeSquint(눈웃음)는 부분적으로 감기게, eyeWide(놀람·무서움)는 음수로 더 뜨게 한다.
+    const squint = (W("eyesquintleft") + W("eyesquintright")) / 2;
+    const wide = (W("eyewideleft") + W("eyewideright")) / 2;
+    const lid = clamp01(Math.max(blink, squint * 0.8) - wide * 0.35);
+    drawEyes(ctx, parts, drawXY, lid, gaze, manifest);
+  }
+
   function drawChar2D(ctx, { parts, manifest, W, blink, gaze, warp, clearBg = true, head }) {
     if (!parts.base || !manifest) return false;
     const warpOn = !!(warp && warp.ready);
@@ -821,21 +1165,13 @@ window.AvatarCore = (() => {
     }
     const draw = (n, dy = 0) => parts[n] && ctx.drawImage(parts[n], 0, dy);
     const drawXY = (n, dx, dy) => parts[n] && ctx.drawImage(parts[n], dx, dy);
+    _partsRef = parts; _ctxRef = ctx;   // drawBrow 가 쓰는 프레임 지역 참조
     // 워프가 켜져 있으면 base 는 WebGL 레이어가 그리므로 여기선 생략
     if (!warpOn) {
       if (clearBg) { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 512, 512); }
       draw("base");
     }
-    const bR = manifest.browRange || 0;
-    const browUp = -bR * Math.min(1, W("browinnerup") + (W("browouterupleft") + W("browouterupright")) / 2)
-                 + bR * 0.8 * (W("browdownleft") + W("browdownright")) / 2;   // 찡그림은 반대로 내림
-    draw("brow_L", browUp); draw("brow_R", browUp);
-    if (blink > 0.5) { draw("eye_L_closed"); draw("eye_R_closed"); }
-    else {
-      draw("eye_L_open"); draw("eye_R_open");
-      const pr = manifest.pupilRange || 0;
-      drawXY("pupil_L", gaze[0] * pr, gaze[1] * pr); drawXY("pupil_R", gaze[0] * pr, gaze[1] * pr);
-    }
+    drawFaceParts(ctx, { parts, manifest, W, blink, gaze });
     const jawDy = warp ? warp.jawOverlayDy(W("jawopen"), warpOn, manifest)
                        : W("jawopen") * (manifest.jawDrop || 8);
     drawVectorMouth(ctx, W, manifest, jawDy);
@@ -1232,6 +1568,14 @@ window.AvatarCore = (() => {
         ctx.strokeRect(annot.ox + x0 * annot.s, annot.oy + y0 * annot.s,
                        (x1 - x0) * annot.s, (y1 - y0) * annot.s);
       }
+      // 단계 안내를 그림 위에 얹는다 — 페이지 하단 상태줄에만 띄웠더니 못 보고 지나쳐서,
+      // 어노테이션이 끝나지 않은 채(=캐릭터 미생성) 발화를 시도하는 일이 생겼다.
+      ctx.fillStyle = "rgba(0,0,0,.72)";
+      ctx.fillRect(0, 0, 512, 46);
+      ctx.fillStyle = "#fff";
+      ctx.font = "600 18px 'Pretendard','Noto Sans KR',sans-serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText(STEPS[Math.min(annot.step, 3)], 16, 23);
     }
     cv.addEventListener("pointerdown", e => {
       if (!annot) return;
@@ -1279,8 +1623,9 @@ window.AvatarCore = (() => {
   return {
     norm, inferEmotion, classifyEmotion, voiceProsody, smoothStep, weightsFromAnim, shapeAnim, SHAPE,
     EMOTIONS, makeEmotion, makeBlink, makeCursorTracker, makeGaze, makeHeadWander,
-    makeMouthPicker, drawVectorMouth, drawSpriteMouth, makeWarp, speakFlow, speakWithEmotion,
+    makeMouthPicker, drawVectorMouth, drawSpriteMouth, drawSplitLips, makeWarp, speakFlow, speakWithEmotion,
     bindStatus, makeAnnotator, makeMic, chat, makeChat, makeShowcase, pickReaction, makeMirror, irisGaze, makeMirrorPanel,
-    mountHead3D, applyMorphs, drawChar2D, setLocale,
+    mountHead3D, applyMorphs, drawChar2D, drawFaceParts, setLocale,
+    __eyeProfiles: eyeProfiles,   // 콘솔·검증 전용. 공개 계약 아님(반환 형태가 바뀔 수 있다).
   };
 })();

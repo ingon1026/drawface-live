@@ -382,7 +382,7 @@ function render(now) {
   if (is3D()) {
     if (!mounted) return;
     AvatarCore.applyMorphs(mounted.morphMeshes, smooth, blink);
-    const [gsx, gsy] = gaze3d(0, W);
+    const [gsx, gsy] = gaze3d(W);
     for (const e of mounted.eyes) e.rotation.set(gsy * 0.3, gsx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
     // 머리 회전: 토글 ON 이면 웹캠 머리 자세를 전이, OFF 면 표정만 (기존 동작 유지)
@@ -399,7 +399,7 @@ function render(now) {
   headWander(shakeEl, now, W("jawopen"), 0.5, null, $("headMove").checked ? mirror.head() : null);
   if (warp.ready) { glCanvas.style.visibility = "visible"; warp.render(); }
   else { glCanvas.style.visibility = "hidden"; }
-  AvatarCore.drawChar2D(ctx2d, { parts, manifest, W, blink, gaze: gaze2d(0, W), warp, clearBg: !CLEAN });
+  AvatarCore.drawChar2D(ctx2d, { parts, manifest, W, blink, gaze: gaze2d(W), warp, clearBg: !CLEAN });
 
   if (recCv) {   // 2D 녹화 합성 — 두 레이어(gl 워프 + cv 오버레이)
     const c = recCv.getContext("2d");

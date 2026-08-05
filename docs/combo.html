@@ -110,7 +110,7 @@ function make3D(canvas, glbName) {
   return { render(blink, h) {
     if (!mounted) return;
     AvatarCore.applyMorphs(mounted.morphMeshes, smooth, blink);
-    const [gx, gy] = gaze(0, W);
+    const [gx, gy] = gaze(W);
     for (const e of mounted.eyes) e.rotation.set(gy * 0.3, gx * 0.4, 0);
     nod = 0.85 * nod + 0.15 * W("jawopen");
     // 머리 회전: h 가 오면 웹캠 머리 자세를 얹고, 없으면 끄덕임만 (기존 동작)
@@ -135,7 +135,7 @@ function make2D(canvas, name) {
   // 머리 자세는 CSS 가 아니라 캔버스 변환으로 넘긴다 — 5칸 녹화가 drawImage 로 합성하는데
   // CSS 변환은 비트맵에 안 담기기 때문(스튜디오는 shake 래퍼가 있어 CSS 경로를 쓴다).
   return { render(blink, h) {
-    AvatarCore.drawChar2D(ctx, { parts, manifest, W, blink, gaze: gaze(0, W), head: h });
+    AvatarCore.drawChar2D(ctx, { parts, manifest, W, blink, gaze: gaze(W), head: h });
   } };
 }
 
